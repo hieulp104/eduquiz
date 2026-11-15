@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/*
+ * Bảng màu dùng chung — KHÔNG hard-code mã hex trong component,
+ * dùng class theo token: bg-brand-600, text-ink, border-line, bg-surface...
+ */
+@theme {
+  --font-sans: var(--font-app), ui-sans-serif, system-ui, sans-serif;
+
+  /* Màu thương hiệu: xanh dương */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+
+  --color-brand-900: #1e3a8a;
+
+  /* Sidebar + banner chào mừng */
+  --color-sidebar: #1f3fae;
+  --color-navy-950: #0c1a36;
+  --color-navy-800: #1b3168;
+
+  /* Nút "Tạo ..." màu xanh lá nổi bật */
+  --color-cta-500: #6cc417;
+  --color-cta-600: #5aaa0f;
+
+  /* Ngân hàng chung — xanh ngọc */
+  --color-bank-500: #17a2b8;
+  --color-bank-600: #138a9c;
+
+  --color-success-50: #ecfdf5;
+  --color-success-200: #a7f3d0;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-700: #b45309;
+
+  --color-danger-50: #fef2f2;
+  --color-danger-200: #fecaca;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+
+  /* Màu nền / chữ / viền — đổi theo dark mode qua biến bên dưới */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+}
+
+/*
+ * Chế độ sáng/tối: <html data-theme="light|dark"> do nút "Chế độ tối" đặt (lưu localStorage,
+ * script trong app/layout.tsx áp trước khi vẽ trang). Chưa chọn → theo hệ điều hành.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --canvas: #f0f4f9;
+  --surface: #ffffff;
+  --muted: #f1f3f8;
+  --line: #e1e5ec;
+  --ink: #111827;
+  --ink-soft: #5b6475;
+  --ink-faint: #9aa3b2;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --canvas: #0d1117;
+  --surface: #161b22;
+  --muted: #1f2630;
+  --line: #2b3340;
+  --ink: #e6e9ef;
+  --ink-soft: #a3acba;
+  --ink-faint: #6b7483;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0d1117;
+    --surface: #161b22;
+    --muted: #1f2630;
+    --line: #2b3340;
+    --ink: #e6e9ef;
+    --ink-soft: #a3acba;
+    --ink-faint: #6b7483;
+    color-scheme: dark;
+  }
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+/* Nội dung văn bản định dạng (trình soạn thảo + khi hiển thị bài tập). */
+.rich-content {
+  line-height: 1.6;
+}
+.rich-content p {
+  margin: 0.25rem 0;
+}
+.rich-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.25rem;
+}
+.rich-content h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+}
+.rich-content ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+.rich-content ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+.rich-content blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 0.75rem;
+  color: var(--ink-soft);
+}
+.rich-content mark {
+  border-radius: 2px;
+  padding: 0 1px;
+  color: #111827;
+}
+/* Placeholder khi trình soạn thảo trống (extension Placeholder gắn class + data-placeholder) */
+.rich-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ink-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/*
+ * Mục sidebar đang mở: 2 góc lõm phía trên/dưới để "tab" nối liền vào khung nội dung.
+ * Dùng box-shadow màu nền khung → tự đổi theo chế độ tối.
+ */
+.sidebar-tab::before,
+.sidebar-tab::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+.sidebar-tab::before {
+  top: -20px;
+  border-bottom-right-radius: 20px;
+  box-shadow: 8px 8px 0 8px var(--canvas);
+}
+.sidebar-tab::after {
+  bottom: -20px;
+  border-top-right-radius: 20px;
+  box-shadow: 8px -8px 0 8px var(--canvas);
+}

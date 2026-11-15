@@ -1,0 +1,26 @@
+# EduQuiz — hạ tầng phát triển (Postgres)
+# Dùng: docker compose up -d
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: eduquiz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eduquiz
+      POSTGRES_PASSWORD: eduquiz_dev_password
+      POSTGRES_DB: eduquiz
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      # 5432/5433 đã bị dự án khác (tamnest) chiếm trên máy dev → map ra 5434.
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eduquiz -d eduquiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

@@ -1,0 +1,705 @@
+// ═══════════════════════════════════════════════════════════════════
+// EduQuiz — Nền tảng giao bài tập & thi trắc nghiệm trực tuyến
+// Quy ước: model PascalCase · bảng snake_case qua @@map · enum SCREAMING_SNAKE
+// Soft delete: các bảng chính có deletedAt — query mặc định lọc deletedAt: null.
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══════════════════ ENUMS ═══════════════════
+
+/// Vai trò người dùng. Kiểm tra quyền LUÔN qua can() — không so sánh role trực tiếp.
+enum RoleCode {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+// ═══════════════════ NGƯỜI DÙNG ═══════════════════
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  /// Tên đăng nhập do quản trị cấp (chữ thường, không dấu). Đăng nhập được bằng email / SĐT / username.
+  username         String?   @unique
+  phone            String?   @unique
+  fullName         String    @map("full_name")
+  passwordHash     String    @map("password_hash")
+  role             RoleCode  @default(STUDENT)
+  /// Khối giáo viên đang dạy (1–12, 0 = "Khác") — chọn ở bước vào Ngân hàng chung.
+  teachingGrades   Int[]     @default([]) @map("teaching_grades")
+  teachingSubjects String[]  @default([]) @map("teaching_subjects")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  teachingClasses Classroom[]      @relation("ClassTeacher")
+  memberships     ClassMember[]
+  exams           Exam[]
+  submissions     Submission[]
+  homeworks       Homework[]
+  files           StoredFile[]
+  examFolders     ExamFolder[]
+  classGroups     ClassGroup[]
+  teacherGroups   TeacherGroup[]   @relation("TeacherGroupOwner")
+  managedTeachers ManagedTeacher[] @relation("ManagedTeacherOwner")
+  managedBy       ManagedTeacher[] @relation("ManagedTeacherAccount")
+  contentItems    ContentItem[]
+  questionBanks   QuestionBank[]
+  bankActivities  BankActivity[]
+
+  @@map("users")
+}
+
+// ═══════════════════ LỚP HỌC ═══════════════════
+
+model Classroom {
+  id         String    @id @default(cuid())
+  name       String
+  subject    String?
+  /// Năm học, VD "2026-2027" (null = lớp tạo trước khi có trường này).
+  schoolYear String?   @map("school_year")
+  /// Nhóm lớp của giáo viên (null = "Khác").
+  groupId    String?   @map("group_id")
+  /// Mã 6 ký tự học sinh nhập để vào lớp.
+  joinCode   String    @unique @map("join_code")
+  teacherId  String    @map("teacher_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  teacher     User              @relation("ClassTeacher", fields: [teacherId], references: [id])
+  group       ClassGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  members     ClassMember[]
+  assignments Assignment[]
+  homeworks   HomeworkClass[]
+  permissions ClassPermission[]
+
+  @@index([teacherId])
+  @@map("classrooms")
+}
+
+/// Nhóm lớp do giáo viên tự đặt (VD "Khối 10", "Lớp chiều") — chỉ để sắp xếp danh sách lớp.
+model ClassGroup {
+  id        String    @id @default(cuid())
+  teacherId String    @map("teacher_id")
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  teacher User        @relation(fields: [teacherId], references: [id])
+  classes Classroom[]
+
+  @@index([teacherId])
+  @@map("class_groups")
+}
+
+// ═══════════════════ NGÂN HÀNG CÂU HỎI RIÊNG ═══════════════════
+// Khác "Ngân hàng chung" (QuestionBankNode / BankQuestion — nội dung hệ thống, chỉ đọc):
+// mỗi giáo viên tự tạo ngân hàng, tự dựng cấu trúc chương/bài, nhập câu hỏi, rồi tạo đề.
+
+/// Ngân hàng câu hỏi của giáo viên.
+model QuestionBank {
+  id        String    @id @default(cuid())
+  ownerId   String    @map("owner_id")
+  name      String
+  /// Khối 1–12, 0 = Khác.
+  grade     Int?
+  subject   String?
+  /// Sách (nút gốc của Ngân hàng chung) — để "Tạo cấu trúc theo sách". null = không theo sách.
+  bookId    String?   @map("book_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner      User              @relation(fields: [ownerId], references: [id])
+  book       QuestionBankNode? @relation("BankBook", fields: [bookId], references: [id], onDelete: SetNull)
+  sections   BankSection[]
+  items      BankItem[]
+  activities BankActivity[]
+
+  @@index([ownerId])
+  @@map("question_banks")
+}
+
+/// Chương / bài trong ngân hàng — lồng nhau (parentId).
+model BankSection {
+  id        String   @id @default(cuid())
+  bankId    String   @map("bank_id")
+  parentId  String?  @map("parent_id")
+  title     String
+  order     Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  bank     QuestionBank  @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  parent   BankSection?  @relation("SectionTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children BankSection[] @relation("SectionTree")
+  items    BankItem[]
+
+  @@index([bankId, parentId])
+  @@map("bank_sections")
+}
+
+/// Câu hỏi trong ngân hàng riêng — trắc nghiệm 1 đáp án. Nội dung dùng <b> <i> <u>.
+model BankItem {
+  id           String         @id @default(cuid())
+  bankId       String         @map("bank_id")
+  /// Bài chứa câu (null = chưa xếp bài; xóa bài thì câu về đây).
+  sectionId    String?        @map("section_id")
+  content      String
+  options      String[]
+  correctIndex Int            @map("correct_index")
+  level        QuestionLevel?
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  bank    QuestionBank @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  section BankSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([bankId, sectionId])
+  @@map("bank_items")
+}
+
+/// Nhật ký hoạt động của ngân hàng (tab "Các hoạt động").
+model BankActivity {
+  id        String   @id @default(cuid())
+  bankId    String   @map("bank_id")
+  actorId   String   @map("actor_id")
+  /// Câu mô tả sẵn, VD "Thêm 12 câu hỏi vào bài Phép cộng".
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  bank  QuestionBank @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  actor User         @relation(fields: [actorId], references: [id])
+
+  @@index([bankId, createdAt])
+  @@map("bank_activities")
+}
+
+// ═══════════════════ KHO NỘI DUNG ═══════════════════
+// Thư viện chung: giáo viên chia sẻ đề / tài liệu / slide / kế hoạch bài giảng / link video.
+
+/// Loại nội dung trong kho (nhãn ở modules/content/content.types.ts).
+enum ContentKind {
+  EXAM
+  REFERENCE
+  VIDEO
+  SLIDE
+  LESSON_PLAN
+}
+
+/// 1 mục trong kho. EXAM trỏ tới đề có sẵn (examId); REFERENCE / SLIDE / LESSON_PLAN là file (fileId);
+/// VIDEO CHỈ lưu link (url) — không tải video lên hệ thống.
+model ContentItem {
+  id            String      @id @default(cuid())
+  ownerId       String      @map("owner_id")
+  kind          ContentKind
+  title         String
+  description   String?
+  /// Khối 1–12, 0 = Khác.
+  grade         Int?
+  subject       String?
+  examId        String?     @map("exam_id")
+  fileId        String?     @unique @map("file_id")
+  url           String?
+  downloadCount Int         @default(0) @map("download_count")
+  viewCount     Int         @default(0) @map("view_count")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deletedAt     DateTime?   @map("deleted_at")
+
+  owner User        @relation(fields: [ownerId], references: [id])
+  exam  Exam?       @relation(fields: [examId], references: [id], onDelete: SetNull)
+  file  StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([kind, grade])
+  @@index([ownerId])
+  @@index([examId])
+  @@map("content_items")
+}
+
+// ═══════════════════ QUẢN LÝ GIÁO VIÊN ═══════════════════
+// Giáo viên (chủ, thường là tài khoản VIP dùng chung) lập danh sách giáo viên + nhóm, rồi phân quyền lớp của mình cho nhóm / từng người.
+// Người được phân quyền: xem lớp, giao đề, xem kết quả — KHÔNG sửa lớp / xóa học sinh.
+
+/// Nhóm giáo viên của chủ (VD "Tổ Toán").
+model TeacherGroup {
+  id        String   @id @default(cuid())
+  ownerId   String   @map("owner_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner            User                 @relation("TeacherGroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members          TeacherGroupMember[]
+  classPermissions ClassPermission[]
+
+  @@index([ownerId])
+  @@map("teacher_groups")
+}
+
+/// Giáo viên trong danh sách của chủ — bản ghi quản lý (tên + SĐT/email), KHÔNG cần tài khoản.
+/// Trùng SĐT/email với tài khoản giáo viên có sẵn thì liên kết (teacherId) để người đó thấy lớp được phân quyền.
+model ManagedTeacher {
+  id          String   @id @default(cuid())
+  ownerId     String   @map("owner_id")
+  displayName String   @map("display_name")
+  /// SĐT 10 chữ số (đã chuẩn hóa, +84 → 0) — có SĐT hoặc email.
+  phone       String?
+  email       String?
+  teacherId   String?  @map("teacher_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  owner            User                 @relation("ManagedTeacherOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  teacher          User?                @relation("ManagedTeacherAccount", fields: [teacherId], references: [id], onDelete: SetNull)
+  groups           TeacherGroupMember[]
+  classPermissions ClassPermission[]
+
+  @@unique([ownerId, phone])
+  @@unique([ownerId, email])
+  @@unique([ownerId, teacherId])
+  @@index([teacherId])
+  @@map("managed_teachers")
+}
+
+model TeacherGroupMember {
+  groupId  String @map("group_id")
+  memberId String @map("member_id")
+
+  group  TeacherGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member ManagedTeacher @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, memberId])
+  @@index([memberId])
+  @@map("teacher_group_members")
+}
+
+/// Lớp được phân quyền cho 1 nhóm giáo viên HOẶC 1 giáo viên (đúng 1 trong 2 cột khác null).
+model ClassPermission {
+  id        String   @id @default(cuid())
+  classId   String   @map("class_id")
+  groupId   String?  @map("group_id")
+  memberId  String?  @map("member_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  classroom Classroom       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  group     TeacherGroup?   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member    ManagedTeacher? @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, groupId])
+  @@unique([classId, memberId])
+  @@index([groupId])
+  @@index([memberId])
+  @@map("class_permissions")
+}
+
+model ClassMember {
+  classId   String   @map("class_id")
+  studentId String   @map("student_id")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  classroom Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student   User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([classId, studentId])
+  @@index([studentId])
+  @@map("class_members")
+}
+
+// ═══════════════════ ĐỀ THI ═══════════════════
+
+model Exam {
+  id              String           @id @default(cuid())
+  title           String
+  description     String?
+  /// Thời gian làm bài (phút).
+  durationMinutes Int              @map("duration_minutes")
+  teacherId       String           @map("teacher_id")
+  /// Thư mục chứa đề — null = nằm ở gốc.
+  folderId        String?          @map("folder_id")
+  /// Khối 1–12 (0 = Khác) · môn · mục đích — chọn ở bước "Cấu hình chung".
+  grade           Int?
+  subject         String?
+  /// Mã mục đích theo nhóm Học kỳ 1 / Học kỳ 2 / Mục đích khác (EXAM_PURPOSE_GROUPS ở common/enums).
+  purpose         String?
+  /// Cấu hình giá — hiện CHỈ lưu và hiển thị cho học sinh, chưa thu tiền thật.
+  priceMode       PriceMode        @default(FREE) @map("price_mode")
+  /// VND
+  price           Int              @default(0)
+  /// HTML đã lọc bằng sanitizeRichText.
+  priceNote       String           @default("") @map("price_note")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
+
+  teacher      User              @relation(fields: [teacherId], references: [id])
+  folder       ExamFolder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  questions    Question[]
+  groups       QuestionGroup[]
+  assignments  Assignment[]
+  contentItems ContentItem[]
+  onlineConfig ExamOnlineConfig?
+
+  @@index([teacherId])
+  @@index([folderId])
+  @@map("exams")
+}
+
+enum PriceMode {
+  FREE
+  /// Thu phí khi tham gia thi
+  PAID_ENTRY
+  /// Thu phí khi xem giải thích
+  PAID_EXPLANATION
+}
+
+/// Kiểm tra: làm cả đề rồi nộp · Luyện tập: từng câu một, trả lời xong biết đúng/sai ngay.
+enum ExamMode {
+  EXAM
+  PRACTICE
+}
+
+enum ExamAudience {
+  /// Ai có link (đã đăng nhập) cũng làm được
+  ALL
+  CLASSES
+  STUDENTS
+}
+
+/// Khi nào học sinh được xem điểm / đề và đáp án.
+enum RevealMode {
+  NEVER
+  AFTER_SUBMIT
+  /// "Khi tất cả thi xong" = sau khi hết thời gian giao đề
+  AFTER_CLOSE
+  /// Chỉ dùng cho đáp án: khi đạt đến số điểm nhất định
+  MIN_SCORE
+}
+
+/// "Cài đặt làm bài online" của 1 đề (trang /de-thi/[id]/lam-bai-online). Xuất bản → sinh / cập nhật Assignment.
+model ExamOnlineConfig {
+  examId             String       @id @map("exam_id")
+  /// Mã ngắn trong link làm bài /thi/<code>.
+  code               String       @unique
+  mode               ExamMode     @default(EXAM)
+  /// null = mới lưu nháp.
+  publishedAt        DateTime?    @map("published_at")
+  /// Thời gian giao đề — bỏ trống = không giới hạn.
+  openAt             DateTime?    @map("open_at")
+  dueAt              DateTime?    @map("due_at")
+  audience           ExamAudience @default(ALL)
+  classIds           String[]     @default([]) @map("class_ids")
+  studentIds         String[]     @default([]) @map("student_ids")
+  /// Thi tại phòng máy: nộp bài xong tự đăng xuất.
+  labMode            Boolean      @default(false) @map("lab_mode")
+  /// 0 = không giới hạn số lượt làm.
+  maxAttempts        Int          @default(1) @map("max_attempts")
+  /// Mật khẩu vào đề (giáo viên cần xem lại nên không băm).
+  password           String?
+  /// Đếm số lần học sinh rời khỏi trang làm bài.
+  monitorLeave       Boolean      @default(false) @map("monitor_leave")
+  /// Đảo câu hỏi (trong nhóm) và đáp án.
+  shuffle            Boolean      @default(false)
+  /// Đảo vị trí các nhóm câu hỏi.
+  shuffleGroups      Boolean      @default(false) @map("shuffle_groups")
+  hideGroupTitles    Boolean      @default(false) @map("hide_group_titles")
+  showScore          RevealMode   @default(AFTER_SUBMIT) @map("show_score")
+  showAnswers        RevealMode   @default(AFTER_SUBMIT) @map("show_answers")
+  /// Thang 10 — dùng khi showAnswers = MIN_SCORE.
+  minScoreForAnswers Float?       @map("min_score_for_answers")
+  /// Câu làm sai không hiện đáp án đúng.
+  hideWrongAnswers   Boolean      @default(false) @map("hide_wrong_answers")
+  /// Luyện tập: làm xong được luyện lại các câu sai.
+  retryWrong         Boolean      @default(false) @map("retry_wrong")
+  /// Dòng thêm vào tiêu đề đề khi học sinh làm bài.
+  headerNote         String       @default("") @map("header_note")
+  /// Thông báo học sinh đọc trước khi bắt đầu.
+  preNotice          String       @default("") @map("pre_notice")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@map("exam_online_configs")
+}
+
+/// Thư mục sắp xếp đề thi của giáo viên — lồng nhau được (parentId).
+model ExamFolder {
+  id        String    @id @default(cuid())
+  teacherId String    @map("teacher_id")
+  parentId  String?   @map("parent_id")
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  teacher  User         @relation(fields: [teacherId], references: [id])
+  parent   ExamFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ExamFolder[] @relation("FolderTree")
+  exams    Exam[]
+
+  @@index([teacherId, parentId])
+  @@map("exam_folders")
+}
+
+/// Nhóm câu hỏi: lời dẫn chung ("Choose the word…") hoặc đoạn văn đọc hiểu dùng cho nhiều câu.
+/// Nội dung dùng định dạng <b> <i> <u> (lib/inline-format.ts).
+model QuestionGroup {
+  id          String  @id @default(cuid())
+  examId      String  @map("exam_id")
+  order       Int
+  content     String
+  /// Đảo câu khi làm bài thì các câu trong nhóm vẫn giữ thứ tự ("Cố định câu hỏi trong nhóm").
+  fixedOrder  Boolean @default(false) @map("fixed_order")
+  /// File nghe dùng chung cho cả nhóm.
+  audioFileId String? @map("audio_file_id")
+
+  exam      Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  audioFile StoredFile? @relation("GroupAudio", fields: [audioFileId], references: [id], onDelete: SetNull)
+  questions Question[]
+
+  @@index([examId])
+  @@map("question_groups")
+}
+
+/// Mức độ: Nhận biết · Thông hiểu · Vận dụng.
+enum QuestionLevel {
+  RECOGNITION
+  COMPREHENSION
+  APPLICATION
+}
+
+/// Câu hỏi trắc nghiệm một đáp án đúng. Nội dung có thể chứa <b> <i> <u>.
+model Question {
+  id           String         @id @default(cuid())
+  examId       String         @map("exam_id")
+  /// Thuộc nhóm nào (null = câu đứng riêng).
+  groupId      String?        @map("group_id")
+  order        Int
+  content      String
+  points       Float          @default(1)
+  /// Mức độ nhận thức (nhãn ở common/enums).
+  level        QuestionLevel?
+  /// Đảo đáp án khi làm bài thì câu này vẫn giữ thứ tự A–D ("Cố định đáp án").
+  fixedOptions Boolean        @default(false) @map("fixed_options")
+  audioFileId  String?        @map("audio_file_id")
+
+  exam      Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  group     QuestionGroup?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  audioFile StoredFile?      @relation("QuestionAudio", fields: [audioFileId], references: [id], onDelete: SetNull)
+  options   QuestionOption[]
+  answers   Answer[]
+
+  @@index([examId])
+  @@index([groupId])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String  @map("question_id")
+  order      Int
+  content    String
+  isCorrect  Boolean @default(false) @map("is_correct")
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+// ═══════════════════ GIAO BÀI & NỘP BÀI ═══════════════════
+
+/// Một đề được giao cho một lớp. classId = null: giao cho "tất cả mọi người" / danh sách học sinh
+/// (theo ExamOnlineConfig.audience). dueAt = null: không giới hạn thời gian.
+model Assignment {
+  id               String    @id @default(cuid())
+  examId           String    @map("exam_id")
+  classId          String?   @map("class_id")
+  openAt           DateTime  @default(now()) @map("open_at")
+  dueAt            DateTime? @map("due_at")
+  /// Cho học sinh xem đáp án đúng sau khi nộp.
+  showAnswer       Boolean   @default(true) @map("show_answer")
+  /// Mỗi học sinh thấy thứ tự câu / đáp án khác nhau (cố định theo lượt làm).
+  shuffleQuestions Boolean   @default(false) @map("shuffle_questions")
+  shuffleOptions   Boolean   @default(false) @map("shuffle_options")
+  /// Đảo vị trí các nhóm câu (khối); tắt thì nhóm đứng yên, chỉ đảo câu bên trong.
+  shuffleGroups    Boolean   @default(false) @map("shuffle_groups")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  exam        Exam         @relation(fields: [examId], references: [id])
+  classroom   Classroom?   @relation(fields: [classId], references: [id], onDelete: Restrict)
+  submissions Submission[]
+
+  @@index([classId])
+  @@index([examId])
+  @@map("assignments")
+}
+
+/// Một lượt làm bài. Số lượt tối đa theo ExamOnlineConfig.maxAttempts (không có cấu hình = 1 lượt).
+model Submission {
+  id           String    @id @default(cuid())
+  assignmentId String    @map("assignment_id")
+  studentId    String    @map("student_id")
+  /// Lượt thứ mấy của học sinh với bài này (1, 2, …).
+  attempt      Int       @default(1)
+  /// Số lần rời khỏi trang làm bài (khi bật giám sát).
+  leaveCount   Int       @default(0) @map("leave_count")
+  startedAt    DateTime  @default(now()) @map("started_at")
+  submittedAt  DateTime? @map("submitted_at")
+  score        Float?
+  maxScore     Float     @map("max_score")
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  student    User       @relation(fields: [studentId], references: [id])
+  answers    Answer[]
+
+  @@unique([assignmentId, studentId, attempt])
+  @@index([studentId])
+  @@map("submissions")
+}
+
+model Answer {
+  id           String  @id @default(cuid())
+  submissionId String  @map("submission_id")
+  questionId   String  @map("question_id")
+  optionId     String? @map("option_id")
+  isCorrect    Boolean @default(false) @map("is_correct")
+
+  submission Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question   Question        @relation(fields: [questionId], references: [id])
+  option     QuestionOption? @relation(fields: [optionId], references: [id])
+
+  @@unique([submissionId, questionId])
+  @@map("answers")
+}
+
+// ═══════════════════ BÀI TẬP (giao nội dung + file, học sinh nộp bài) ═══════════════════
+
+/// Mục đích tạo bài tập — nhãn tiếng Việt ở common/enums.
+enum HomeworkPurpose {
+  HOMEWORK
+  PRACTICE
+  REVIEW
+  QUIZ_15
+  TEST_45
+  SEMESTER_EXAM
+  OTHER
+}
+
+model Homework {
+  id           String          @id @default(cuid())
+  teacherId    String          @map("teacher_id")
+  title        String
+  /// Khối 1–12
+  grade        Int
+  subject      String
+  purpose      HomeworkPurpose
+  /// Bỏ trống = không giới hạn thời gian.
+  startAt      DateTime?       @map("start_at")
+  dueAt        DateTime?       @map("due_at")
+  /// HTML từ trình soạn thảo — ĐÃ lọc bằng sanitize-html trước khi lưu.
+  contentHtml  String          @default("") @map("content_html")
+  showResult   Boolean         @default(true) @map("show_result")
+  requireLogin Boolean         @default(false) @map("require_login")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  deletedAt    DateTime?       @map("deleted_at")
+
+  teacher User            @relation(fields: [teacherId], references: [id])
+  classes HomeworkClass[]
+  files   StoredFile[]
+
+  @@index([teacherId])
+  @@map("homeworks")
+}
+
+model HomeworkClass {
+  homeworkId String @map("homework_id")
+  classId    String @map("class_id")
+
+  homework  Homework  @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  classroom Classroom @relation(fields: [classId], references: [id])
+
+  @@id([homeworkId, classId])
+  @@index([classId])
+  @@map("homework_classes")
+}
+
+/// File người dùng tải lên. Tải lên trước (homeworkId = null), gắn vào bài tập khi lưu.
+model StoredFile {
+  id           String   @id @default(cuid())
+  ownerId      String   @map("owner_id")
+  /// Đường dẫn trong kho lưu trữ (shared/storage) — không lộ ra client.
+  objectKey    String   @unique @map("object_key")
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  size         Int
+  homeworkId   String?  @map("homework_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  owner            User            @relation(fields: [ownerId], references: [id])
+  homework         Homework?       @relation(fields: [homeworkId], references: [id], onDelete: SetNull)
+  audioOfQuestions Question[]      @relation("QuestionAudio")
+  audioOfGroups    QuestionGroup[] @relation("GroupAudio")
+  contentItem      ContentItem?
+
+  @@index([homeworkId])
+  @@index([ownerId])
+  @@map("stored_files")
+}
+
+// ═══════════════════ NGÂN HÀNG CÂU HỎI (tạo phiếu bài tập) ═══════════════════
+
+/// Kiểu hiển thị câu hỏi trên phiếu. Cả 2 kiểu đều lưu options + correctIndex
+/// để chuyển được sang đề trắc nghiệm online.
+enum BankQuestionType {
+  /// Trắc nghiệm A/B/C/D
+  MCQ
+  /// Điền vào chỗ trống — đáp án là options[correctIndex]
+  FILL
+}
+
+/// Cây kiến thức: sách (gốc, parentId = null) → chủ đề → bài → dạng câu hỏi.
+model QuestionBankNode {
+  id       String  @id @default(cuid())
+  /// Khóa ổn định để seed chạy lại không tạo trùng, VD "toan1-kntt/cd1/b1/tn".
+  key      String  @unique
+  parentId String? @map("parent_id")
+  /// Chỉ có ở nút gốc (sách).
+  grade    Int?
+  subject  String?
+  title    String
+  order    Int
+
+  parent    QuestionBankNode?  @relation("BankTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  QuestionBankNode[] @relation("BankTree")
+  questions BankQuestion[]
+  /// Ngân hàng riêng chọn sách này.
+  ownBanks  QuestionBank[]     @relation("BankBook")
+
+  @@index([parentId])
+  @@map("question_bank_nodes")
+}
+
+model BankQuestion {
+  id           String           @id @default(cuid())
+  nodeId       String           @map("node_id")
+  type         BankQuestionType
+  content      String
+  options      String[]
+  correctIndex Int              @map("correct_index")
+
+  node QuestionBankNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@map("bank_questions")
+}
