@@ -632,6 +632,7 @@ function FormatHelp({ onClose }: { onClose: () => void }) {
     ["A. …   B. …   C. …   D. …", "Phương án — mỗi dòng 1 cái, hoặc cách nhau bằng Tab"],
     ["*B. …   hoặc   Đáp án: B", "Đánh dấu đáp án đúng (hoặc bấm phương án ở cột trái)"],
     ["ĐÁP ÁN  rồi  1.C | 2.A | …", "Bảng đáp án cuối đề"],
+    ["File Word: tô đỏ / tô nền đáp án", "Khi tải file lên, phương án tô màu khác các phương án còn lại được ghi thành dấu *"],
     ["Dòng chữ đứng trước câu hỏi", "Tiêu đề nhóm: lời dẫn / đoạn văn dùng chung cho các câu sau"],
     ["<b>đậm</b> <i>nghiêng</i> <u>gạch chân</u>", "Định dạng chữ — bôi đen rồi bấm B / I / U"],
     ["Câu 1. [NB] [cố định] [audio:…] …", "Mức độ NB/TH/VD, cố định đáp án, file nghe — đặt bằng nút ở cột trái"],

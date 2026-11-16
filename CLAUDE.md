@@ -142,7 +142,18 @@ Trả kết quả bằng `ok()` / `fail()` (`common/filters/error.ts`), hoặc s
   KHÔNG dangerouslySetInnerHTML. Câu thuộc nhóm được để trống nội dung (VD câu phát âm).
 - Đọc file: `POST /api/exams/import` → `{ title, text, warnings }` (chỉ bản nháp, không lưu). docx đọc qua HTML của
   mammoth để giữ đậm/nghiêng/gạch chân; xlsx/tex → câu hỏi → `serializeExam()`. Dòng đầu trang (tên đề viết hoa,
-  "Họ và tên…") bị bỏ (`tidyImportedText`). `demau/` (gitignore) chỉ là file tham khảo — KHÔNG đưa vào app.
+  "Họ và tên…", "Năm học…") bị bỏ (`tidyImportedText`). `demau/` (gitignore) chỉ là file tham khảo — KHÔNG đưa vào app.
+- **docx qua `docx-prepare.ts` TRƯỚC khi vào mammoth** (mammoth làm mất 2 thứ này): (1) đánh số tự động của Word
+  ("A. B. C. D.", "1.", "Câu 1.", "II.") tính lại như Word hiển thị — `numbering.xml`: định dạng, số bắt đầu, đánh số lại,
+  nhiều cấp, đánh số gắn ở kiểu đoạn — rồi ghi thành chữ thật; (2) chữ tô màu / highlight / tô nền bọc bằng ký tự đánh dấu
+  `MARK_*` (Private Use). `exam-import.ts` đọc lại: câu chưa có đáp án mà ĐÚNG 1 phương án được tô khác các phương án còn lại
+  (`pickMarkedOption`, dùng `ParsedQuestion.optionAt`) → chèn dấu `*`. Thứ tự ưu tiên: dấu * / "Đáp án:" / bảng đáp án › màu ›
+  nhãn in đậm / gạch chân. 4 nhãn cùng tô 1 màu thì không phải đánh dấu đáp án.
+- Riêng chữ gạch chân khi đọc Word (`importInline`): Tab / ≥ 3 dấu cách gạch chân = chỗ trống → `______`; `fromRuns` KHÔNG
+  nối 2 phần gạch chân cách nhau 1 dấu cách (câu tìm lỗi sai: mỗi phần 1 phương án). Câu tìm lỗi sai chỉ có nhãn "A B C D"
+  mà đề bài có đúng bấy nhiêu phần gạch chân → phương án = các phần đó. Đề có "Lời giải" sau từng câu: tiêu đề phần kế tiếp
+  (số La Mã, in đậm cả dòng, nối tiếp phần trước) kết thúc lời giải và mở nhóm mới.
+- Sửa bộ đọc xong: chạy lại trên vài file đề thật và so đáp án trước / sau — số câu khớp chưa chắc nội dung đúng.
   Bản nháp qua sessionStorage (`EXAM_DRAFT_KEY`), trình soạn tự lưu lại khi gõ (tải lại trang không mất).
 - Điểm: mặc định tổng 10 chia đều (`exam-points.ts`); ô "Nhập điểm" từng câu giữ nguyên, phần còn lại chia đều.
   "Chia điểm nhanh" (`point-split-dialog.tsx`): theo loại câu hỏi hoặc theo phần/nhóm.

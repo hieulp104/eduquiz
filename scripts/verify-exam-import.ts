@@ -4,6 +4,8 @@
  */
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
+import { Document, LevelFormat, Packer, Paragraph, Tab, TextRun } from "docx";
+import { MARK_CLOSE, MARK_OPEN, MARK_SEP, transformDocumentXml } from "@/modules/exams/docx-prepare";
 import { htmlToMarkup, parseExamDocx, parseExamTex, parseExamText, parseExamXlsx } from "@/modules/exams/exam-import";
 import {
   questionBlock,
@@ -358,7 +360,165 @@ Answer:
   const rep = parseExamText(`${pass}\n26. A. lives\tB. works\nHi Nick,\nShe (26) ___ here.\n27. A. at\tB. on\n${pass}\n28. A. x\tB. y`);
   assert.deepEqual(rep.questions.map((q) => q.groupIndex), [0, 0, 0]);
 
-  console.log("✔ verify-exam-import: chữ, docx, đề 2025, tiếng Anh (nhóm câu, gạch chân, đề trộn số, Word tự đánh số), sửa đáp án, thẻ câu/nhóm, xóa/đổi câu, LaTeX, Excel, chia điểm");
+  // 23. Đánh số tự động của Word → chữ thật, đúng như Word hiển thị
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const lvl = (i: number, fmt: string, text: string, start = 1) =>
+    `<w:lvl w:ilvl="${i}"><w:start w:val="${start}"/><w:numFmt w:val="${fmt}"/><w:lvlText w:val="${text}"/></w:lvl>`;
+  const numberingXml = `<w:numbering ${W}>
+    <w:abstractNum w:abstractNumId="0">${lvl(0, "upperLetter", "%1.")}</w:abstractNum>
+    <w:abstractNum w:abstractNumId="1">${lvl(0, "decimal", "Câu %1.")}${lvl(1, "upperLetter", "%2)")}</w:abstractNum>
+    <w:abstractNum w:abstractNumId="2">${lvl(0, "upperLetter", "%1.", 3)}</w:abstractNum>
+    <w:abstractNum w:abstractNumId="3">${lvl(0, "bullet", "•")}</w:abstractNum>
+    <w:abstractNum w:abstractNumId="4">${lvl(0, "upperRoman", "%1.")}</w:abstractNum>
+    <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+    <w:num w:numId="2"><w:abstractNumId w:val="0"/></w:num>
+    <w:num w:numId="3"><w:abstractNumId w:val="0"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>
+    <w:num w:numId="4"><w:abstractNumId w:val="1"/></w:num>
+    <w:num w:numId="5"><w:abstractNumId w:val="2"/></w:num>
+    <w:num w:numId="6"><w:abstractNumId w:val="3"/></w:num>
+    <w:num w:numId="7"><w:abstractNumId w:val="4"/></w:num>
+  </w:numbering>`;
+  const stylesXml = `<w:styles ${W}><w:style w:type="paragraph" w:styleId="Cau"><w:pPr><w:numPr><w:numId w:val="4"/></w:numPr></w:pPr></w:style>
+    <w:style w:type="paragraph" w:styleId="CauCon"><w:basedOn w:val="Cau"/></w:style></w:styles>`;
+  const numbered = (numId: number, text: string, ilvl = 0, mark = "") =>
+    `<w:p><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr>${mark}</w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>
+    ${numbered(1, "a1")}${numbered(1, "a2")}${numbered(2, "nối tiếp")}${numbered(3, "đánh lại")}${numbered(3, "b2")}
+    ${numbered(4, "câu một")}${numbered(4, "p1", 1)}${numbered(4, "p2", 1)}${numbered(4, "câu hai")}${numbered(4, "q1", 1)}
+    ${numbered(5, "bắt đầu từ C")}${numbered(6, "gạch đầu dòng")}${numbered(7, "phần một")}${numbered(7, "phần hai")}
+    <w:p><w:pPr><w:pStyle w:val="CauCon"/></w:pPr><w:r><w:t>theo kiểu đoạn</w:t></w:r></w:p>
+    ${numbered(1, "nhãn đỏ", 0, '<w:rPr><w:b/><w:color w:val="FF0000"/></w:rPr>')}
+    <w:p><w:r><w:rPr><w:color w:val="EE0000"/></w:rPr><w:t>đỏ</w:t></w:r><w:r><w:rPr><w:color w:val="000000"/></w:rPr><w:t>đen</w:t></w:r><w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t>vàng</w:t></w:r><w:r><w:rPr><w:color w:val="262626"/><w:shd w:val="clear" w:fill="FFFFFF"/></w:rPr><w:t>xám</w:t></w:r></w:p>
+  </w:body></w:document>`;
+  const outXml = transformDocumentXml(docXml, numberingXml, stylesXml);
+  const paraTexts = [...outXml.matchAll(/<w:p>[\s\S]*?<\/w:p>/g)].map((m) => [...m[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((t) => t[1]).join(""));
+  const marked = (key: string, text: string) => `${MARK_OPEN}${key}${MARK_SEP}${text}${MARK_CLOSE}`;
+  assert.deepEqual(paraTexts, [
+    "A. a1",
+    "B. a2",
+    "C. nối tiếp", // danh sách khác dùng chung định nghĩa → đếm nối tiếp (như Word)
+    "A. đánh lại", // "Restart at A" (startOverride)
+    "B. b2",
+    "Câu 1. câu một",
+    "A) p1",
+    "B) p2",
+    "Câu 2. câu hai",
+    "A) q1", // cấp dưới đếm lại sau khi lên cấp trên
+    "C. bắt đầu từ C",
+    "gạch đầu dòng", // gạch đầu dòng: không sinh nhãn
+    "I. phần một",
+    "II. phần hai",
+    "Câu 3. theo kiểu đoạn", // đánh số gắn ở kiểu đoạn (kế thừa qua basedOn)
+    `${marked("cFF0000", "D.")} nhãn đỏ`, // nhãn mang màu của dấu ngắt đoạn
+    `${marked("cEE0000", "đỏ")}đen${marked("hyellow", "vàng")}xám`, // chỉ chữ có màu / tô nền mới được đánh dấu
+  ]);
+  assert.ok(outXml.includes("<w:b/>") && /<w:numId w:val="6"\/>/.test(outXml), "nhãn giữ in đậm; đoạn gạch đầu dòng giữ nguyên đánh số");
+  assert.ok(!/<w:numId w:val="[1-57]"\/>/.test(outXml), "đoạn đã ghi nhãn thì bỏ đánh số (mammoth không dựng <ol> nữa)");
+  assert.equal(transformDocumentXml(docXml.replace(/<w:numPr>[\s\S]*?<\/w:numPr>/g, ""), null, null).includes("A. a1"), false, "không có numbering.xml → giữ nguyên");
+
+  // 24. File Word thật: nhãn A–D tự đánh số, đáp án tô đỏ / tô nền, chỗ trống là Tab gạch chân, câu tìm lỗi sai
+  const red = { color: "FF0000" };
+  const blue = { color: "0000FF", bold: true };
+  const numberedOption = (text: string, instance: number, style: object = {}) =>
+    new Paragraph({ numbering: { reference: "abcd", level: 0, instance }, children: [new TextRun({ text, ...style })] });
+  const wordDoc = new Document({
+    numbering: { config: [{ reference: "abcd", levels: [{ level: 0, format: LevelFormat.UPPER_LETTER, text: "%1.", start: 1 }] }] },
+    sections: [
+      {
+        children: [
+          new Paragraph({ children: [new TextRun("Họ và tên: ..............................")] }),
+          new Paragraph({ children: [new TextRun({ text: "Năm học: 2025 – 2026", bold: true })] }),
+          new Paragraph({ children: [new TextRun({ text: "<g3", bold: true }), new TextRun("> "), new TextRun({ text: "Mark the letter A, B, C or D.", bold: true })] }),
+          new Paragraph({ children: [new TextRun({ text: "Question 1.", bold: true }), new TextRun(" She"), new TextRun({ children: [new Tab()], underline: {} }), new TextRun("to school every day.")] }),
+          new Paragraph({ children: [new TextRun("A. go"), new TextRun({ children: [new Tab()] }), new TextRun({ text: "B. goes", ...red }), new TextRun({ children: [new Tab()] }), new TextRun("C. going"), new TextRun({ children: [new Tab()] }), new TextRun("D. gone")] }),
+          new Paragraph({ children: [new TextRun({ text: "Question 2.", bold: true }), new TextRun(" Which sentence is correct?")] }),
+          numberedOption("He go to school.", 1),
+          numberedOption("He going to school.", 1),
+          numberedOption("He goes to school.", 1, { highlight: "yellow" }),
+          numberedOption("He gone to school.", 1),
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Question 3.", bold: true }),
+              new TextRun(" They "),
+              new TextRun({ text: "didn’t", underline: {} }),
+              new TextRun(" "),
+              new TextRun({ text: "went", underline: {} }),
+              new TextRun(" "),
+              new TextRun({ text: "to", underline: {} }),
+              new TextRun(" school "),
+              new TextRun({ text: "last", underline: {} }),
+              new TextRun(" Sunday."),
+            ],
+          }),
+          new Paragraph({ children: [new TextRun("          A       "), new TextRun({ text: "B ", ...red }), new TextRun("   C             D")] }),
+          new Paragraph({ children: [new TextRun({ text: "Question 4.", bold: true }), new TextRun(" Nhãn tô cùng một màu không phải đáp án.")] }),
+          new Paragraph({ children: [new TextRun({ text: "A.", ...blue }), new TextRun(" một"), new TextRun({ children: [new Tab()] }), new TextRun({ text: "B.", ...blue }), new TextRun(" hai")] }),
+          new Paragraph({ children: [new TextRun({ text: "Question 5.", bold: true }), new TextRun(" Bảng đáp án được ưu tiên hơn màu.")] }),
+          numberedOption("đỏ nhưng sai", 2, red),
+          numberedOption("đúng theo bảng", 2),
+          new Paragraph({ children: [new TextRun({ text: "ĐÁP ÁN", bold: true })] }),
+          new Paragraph({ children: [new TextRun("5.B")] }),
+        ],
+      },
+    ],
+  });
+  const word = await parseExamDocx(await Packer.toBuffer(wordDoc), "Word thật");
+  assert.equal(word.questions.length, 5, JSON.stringify(word.warnings));
+  assert.deepEqual(word.groups.map((g) => g.content), ["<b>Mark the letter A, B, C or D.</b>"], "bỏ dòng đầu trang + ký hiệu <g3>");
+  assert.equal(word.questions[0].content, "She ______ to school every day.", "Tab gạch chân = chỗ trống");
+  assert.deepEqual(word.questions.map(correctOf), ["goes", "He goes to school.", "went", undefined, "đúng theo bảng"]);
+  assert.deepEqual(word.questions[1].options.map((o) => o.content), ["He go to school.", "He going to school.", "He goes to school.", "He gone to school."]);
+  assert.equal(word.questions[2].content, "They <u>didn’t</u> <u>went</u> <u>to</u> school <u>last</u> Sunday.", "các phần gạch chân không bị dính nhau");
+  assert.deepEqual(word.questions[2].options.map((o) => o.content), ["didn’t", "went", "to", "last"], "nhãn A B C D → phần gạch chân tương ứng");
+  assert.deepEqual(word.questions[4].options.map((o) => o.content), ["đỏ nhưng sai", "đúng theo bảng"], "danh sách thứ 2 đánh lại từ A");
+  assert.ok(word.warnings.some((w) => w.startsWith("Đáp án đúng của 3 câu được nhận theo chữ tô màu")), JSON.stringify(word.warnings));
+  assert.ok(word.warnings.some((w) => w.startsWith("Câu 4: chưa có đáp án đúng")));
+  assert.ok(!word.warnings.some((w) => w.includes("tìm lỗi sai")), "câu tìm lỗi sai đã đủ phương án thì không cảnh báo");
+
+  // 25. Chữ gạch chân: phần tách nhau giữ nguyên; chỗ trống gạch chân → "______"; mép gạch chân gọn lại
+  assert.equal(fromRuns(toRuns("<u>is</u> <u>with</u>")), "<u>is</u> <u>with</u>", "2 phần gạch chân không bị nối");
+  assert.equal(fromRuns(toRuns("<b>a</b> <b>c</b>")), "<b>a c</b>", "in đậm thì vẫn gộp cho gọn");
+  assert.equal(
+    htmlToMarkup("<p>Your paintings are<u>\t</u>his.</p><p>It <u>is </u>the same <u>with</u> mine <strong><u>   </u></strong>.</p>"),
+    "Your paintings are ______ his.\nIt <u>is</u> the same <u>with</u> mine ______.\n",
+  );
+
+  // 26. Vị trí phương án trong văn bản (để gắn dấu *) + câu tìm lỗi sai gõ tay
+  const located = parseExamText("1. Q?\nA. x\t<b>B.</b> y\n2. They <u>was</u> at <u>home</u> <u>yesterday</u>.\n   A   *B  C");
+  assert.deepEqual(located.questions[0].optionAt, [
+    { line: 1, label: 0, start: 3, end: 5 }, // tới sát nhãn kế tiếp (kể cả khoảng trắng ngăn cách)
+    { line: 1, label: 5, start: 8, end: 9 },
+  ]);
+  assert.deepEqual(located.questions[1].options, [
+    { content: "was", isCorrect: false },
+    { content: "home", isCorrect: true },
+    { content: "yesterday", isCorrect: false },
+  ]);
+  assert.equal(located.questions[1].optionAt[1].label, 8);
+
+  // 27. Dòng đầu trang: "Năm học…", "Môn…" bị bỏ; lời dẫn "Mark the letter…" / "Time flies…" KHÔNG bị bỏ nhầm
+  assert.equal(tidyImportedText("ĐỀ KIỂM TRA\nNăm học: 2024 – 2025\nMôn : TIẾNG ANH- Lớp: 8\nName: ........\nMark the letter A.\n1. A. x\tB. y"), "Mark the letter A.\n1. A. x\tB. y");
+  assert.equal(tidyImportedText("Time flies like an arrow.\n1. A. x\tB. y").split("\n").length, 2);
+  assert.equal(tidyImportedText("<b><g3</b>> <b>Choose.</b>\n1. A. x\tB. y"), "<b>Choose.</b>\n1. A. x\tB. y");
+
+  // 28. Đề có "Lời giải" sau từng câu: tiêu đề phần kế tiếp (La Mã, in đậm) mở nhóm mới, không bị nuốt vào lời giải
+  const sections = parseExamText(`<b>I. Read and choose.</b>
+Passage one.
+Question 1. A. a\t*B. b
+Lời giải
+vì thế này
+<b>II. Read again.</b>
+Passage two.
+Question 2. *A. c\tB. d
+Lời giải
+<b>I. Kiến thức</b>
+II. dòng thường trong lời giải
+Question 3. A. e\t*B. f`);
+  assert.equal(sections.questions.length, 3);
+  assert.deepEqual(sections.groups.map((g) => g.content), ["<b>I. Read and choose.</b>\nPassage one.", "<b>II. Read again.</b>\nPassage two."]);
+  assert.deepEqual(sections.questions.map((q) => q.groupIndex), [0, 1, 1]);
+
+  console.log("✔ verify-exam-import: chữ, docx (đánh số tự động, đáp án tô màu, chỗ trống gạch chân), đề 2025, tiếng Anh (nhóm câu, gạch chân, tìm lỗi sai, đề trộn số), sửa đáp án, thẻ câu/nhóm, xóa/đổi câu, LaTeX, Excel, chia điểm");
 }
 
 main().catch((e) => {

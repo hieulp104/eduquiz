@@ -294,6 +294,14 @@ function singleOption(om: RegExpMatchArray, plain: string, runs: Run[], line: nu
   };
 }
 
+const ROMAN_UNITS: Record<string, number> = { "": 0, I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9 };
+
+/** Số của tiêu đề phần đánh số La Mã ("II. Read the following…" → 2; I…XXXIX). Không phải tiêu đề phần → 0. */
+function sectionNumber(plain: string): number {
+  const m = plain.match(/^\s*(X{0,3})(IX|IV|V?I{0,3})\s*[.)]\s+\S/);
+  return m ? m[1].length * 10 + ROMAN_UNITS[m[2]] : 0;
+}
+
 /** Các phần được gạch chân trong đề bài — mỗi phần là chữ liền nhau cùng gạch chân (chỗ trống gạch chân bỏ qua). */
 function underlinedParts(stem: Run[][]): string[] {
   const parts: string[] = [];
@@ -521,6 +529,7 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
     }
     group.lines.push(normalizeInline(lines[i]));
     kinds[i] = "group";
+    lastSection = sectionNumber(plain) || lastSection;
   }
 
   const key = new AnswerKeyReader();

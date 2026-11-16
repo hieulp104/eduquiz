@@ -241,8 +241,8 @@ export function CreateExamHub({ folderId }: Props) {
           </button>
           <p className="mt-4 text-sm text-ink-soft">Hỗ trợ các định dạng .docx, .xlsx, .tex, .txt</p>
           <p className="mt-1 text-sm text-ink-soft">
-            Upload file <b className="text-ink">Đề thi trắc nghiệm</b> — mỗi câu bắt đầu bằng “Câu 1.”, “Question 1.” hoặc “1.”, đáp án đúng
-            đánh dấu * hoặc có bảng đáp án cuối đề. Đề cấu trúc 2025: nhập PHẦN I.
+            Upload file <b className="text-ink">Đề thi trắc nghiệm</b> — mỗi câu bắt đầu bằng “Câu 1.”, “Question 1.” hoặc “1.”. Đáp án đúng:
+            tô màu chữ (VD chữ đỏ), tô nền, gạch chân nhãn, đánh dấu *, hoặc có bảng đáp án cuối đề. Đề cấu trúc 2025: nhập PHẦN I.
           </p>
           <p className="mt-1 text-sm text-ink-soft">File PDF và ảnh (chụp đề, viết tay) đang được phát triển.</p>
 
