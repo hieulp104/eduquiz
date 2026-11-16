@@ -37,6 +37,8 @@ model User {
   teachingGrades   Int[]     @default([]) @map("teaching_grades")
   teachingSubjects String[]  @default([]) @map("teaching_subjects")
   isActive         Boolean   @default(true) @map("is_active")
+  /// Tài khoản ẩn danh tự tạo khi khách làm bài qua link /thi/<mã> (không đăng nhập bằng mật khẩu được).
+  isGuest          Boolean   @default(false) @map("is_guest")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   deletedAt        DateTime? @map("deleted_at")
@@ -557,6 +559,11 @@ model Submission {
   submittedAt  DateTime? @map("submitted_at")
   score        Float?
   maxScore     Float     @map("max_score")
+  /// Thông tin học sinh tự nhập khi bắt đầu làm bài qua link (khách).
+  takerClass   String?   @map("taker_class")
+  takerNumber  String?   @map("taker_number")
+  /// Nhận xét của giáo viên cho bài làm.
+  comment      String?
 
   assignment Assignment @relation(fields: [assignmentId], references: [id])
   student    User       @relation(fields: [studentId], references: [id])

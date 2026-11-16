@@ -57,6 +57,7 @@ src/
 │   │   ├── lam-bai/[assignmentId]/  ket-qua/[submissionId]/
 │   │   └── khong-co-quyen/ # trang 403
 │   ├── (editor)/           # toàn màn hình, không sidebar: trình soạn đề /de-thi/soan, /de-thi/[id]/sua
+│   ├── (public)/thi/[code] # link làm bài — mở được khi chưa đăng nhập (khách → tài khoản ẩn danh)
 │   └── api/auth, api/health
 ├── modules/                # ★ nghiệp vụ gom theo module
 │   ├── auth/  classes/  exams/  assignments/  submissions/  dashboard/
@@ -185,7 +186,18 @@ Trả kết quả bằng `ok()` / `fail()` (`common/filters/error.ts`), hoặc s
   `saveOnlineSettingsAction`: Lưu nháp = chỉ lưu; Xuất bản = lưu + `syncAssignments` (mỗi lớp 1 `Assignment`, còn lại 1 bài
   `classId = null` "link chung"; bài giao cũ ngoài đối tượng: chưa ai làm thì gỡ, có bài làm thì giữ).
 - `Assignment.classId` và `dueAt` có thể null (không gắn lớp / không giới hạn) — luôn xử lý null. Quyền làm bài:
-  `canTakeAssignment()`; link chung `/thi/[code]` tự tìm bài giao phù hợp (`resolveAssignmentForStudent`). Vẫn phải đăng nhập.
+  `canTakeAssignment()`; link chung `/thi/[code]` tự tìm bài giao phù hợp (`resolveAssignmentForStudent`).
+- **Khách làm qua link (tài khoản ẩn danh, `modules/auth/guest.ts`)**: `/thi/[code]` nằm ở route group `(public)` và được
+  `authorized()` cho qua khi chưa đăng nhập. Đề xuất bản cho "Tất cả mọi người" → hiện thẻ bắt đầu thi (`ExamStartCard`) + hộp
+  "nhập thêm thông tin" (`StartButton`: mật khẩu, họ tên, lớp, STT) → `startGuestAction` tạo `User` `isGuest = true` mang họ tên
+  vừa nhập, mở lượt làm rồi đăng nhập bằng vé 1 lần (provider `guest`, HMAC theo `AUTH_SECRET`, hạn 1 phút) — điểm thuộc tài khoản
+  đó. Đề giao theo lớp / học sinh thì khách bị chuyển về `/login`. Tài khoản ẩn danh: vai trò học sinh, không có mật khẩu, email
+  nội bộ `khach-…@an-danh.eduquiz.local` (KHÔNG hiển thị / tìm kiếm); mỗi lần bắt đầu được hỏi lại thông tin (`renameGuest`).
+  Lớp / STT lưu theo lượt làm (`Submission.takerClass/takerNumber`). Chưa giới hạn tần suất tạo tài khoản ẩn danh, chưa dọn tài khoản cũ.
+- Trang làm bài (`ExamTaker`) phủ toàn màn hình (`fixed inset-0`): thanh trên (thí sinh · đồng hồ · nộp bài) + bảng "Danh sách câu
+  hỏi" chia theo khối nhóm. Trang kết quả của học sinh chỉ có thẻ tổng kết; chi tiết mở bằng "Xem đáp án" (`?dap-an=1`).
+- Danh sách đã thi ở trang đề là thẻ (`ResultCards`) + tab theo đối tượng; "Nhận xét" của giáo viên = `Submission.comment`
+  (`saveSubmissionCommentAction`, quyền `assignment.result.view`), học sinh thấy ở trang kết quả.
 - Luật lúc làm bài / xem kết quả lấy qua `takeSettings(assignment, config)` (`publish.types.ts`, client-safe, có test) —
   đừng đọc thẳng cột config. Chưa xuất bản = bài giao kiểu cũ (1 lượt, đáp án theo `showAnswer`).
   "Khi tất cả thi xong" = sau `dueAt`. Nhiều lượt: `Submission.attempt`, thống kê / xếp hạng lấy lượt điểm cao nhất.
@@ -195,7 +207,7 @@ Trả kết quả bằng `ok()` / `fail()` (`common/filters/error.ts`), hoặc s
 - Mục đích tạo đề: `Exam.purpose` là mã chuỗi trong `EXAM_PURPOSE_GROUPS` (`common/enums`), chọn bằng `PurposeSelect`;
   bài tập vẫn dùng enum `HomeworkPurpose`.
 - Đảo đề: `shuffleGroups` = đổi chỗ các khối; tắt thì nhóm đứng yên, chỉ đảo câu trong nhóm / câu đứng riêng liền nhau.
-- Chưa làm: chèn PowerPoint, làm bài không cần tài khoản, thu tiền online.
+- Chưa làm: chèn PowerPoint, thu tiền online, bảng xếp hạng cho học sinh ở trang kết quả, giáo viên tự chọn trường thông tin khách phải nhập.
 
 ### In đề & phân tích cấu trúc (`/de-thi/[id]/in-de`, `/phan-tich`)
 

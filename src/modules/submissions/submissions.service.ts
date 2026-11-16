@@ -54,7 +54,13 @@ export async function listSubmittedAttempts(assignmentId: string, studentId: str
  * Tạo lượt làm bài. Đang có lượt làm dở thì trả lượt đó.
  * Hết lượt (`maxAttempts`, 0 = không giới hạn) → trả null.
  */
-export async function startSubmission(assignmentId: string, examId: string, studentId: string, maxAttempts = 1) {
+export async function startSubmission(
+  assignmentId: string,
+  examId: string,
+  studentId: string,
+  maxAttempts = 1,
+  taker: { className?: string; number?: string } = {},
+) {
   const latest = await findLatestSubmission(assignmentId, studentId);
   if (latest && !latest.submittedAt) return latest;
   const attempt = (latest?.attempt ?? 0) + 1;
@@ -63,12 +69,48 @@ export async function startSubmission(assignmentId: string, examId: string, stud
   const agg = await prisma.question.aggregate({ where: { examId }, _sum: { points: true } });
   try {
     return await prisma.submission.create({
-      data: { assignmentId, studentId, attempt, maxScore: agg._sum.points ?? 0 },
+      data: {
+        assignmentId,
+        studentId,
+        attempt,
+        maxScore: agg._sum.points ?? 0,
+        takerClass: taker.className || null,
+        takerNumber: taker.number || null,
+      },
     });
   } catch {
     // Bấm 2 lần cùng lúc → khóa unique (assignment, student, attempt) chặn lượt trùng; dùng lượt vừa tạo.
     return findLatestSubmission(assignmentId, studentId);
   }
+}
+
+/** Tổng số lượt đã nộp của một đề (mọi bài giao) — hiện ở trang bắt đầu thi. */
+export async function countExamSubmissions(examId: string) {
+  return prisma.submission.count({
+    where: { submittedAt: { not: null }, assignment: { examId, deletedAt: null } },
+  });
+}
+
+/** Giáo viên ghi nhận xét cho bài làm ("" = xóa nhận xét). */
+export async function setSubmissionComment(submissionId: string, comment: string) {
+  await prisma.submission.update({ where: { id: submissionId }, data: { comment: comment || null } });
+}
+
+/** Bài làm + chủ lớp / người soạn đề — để kiểm tra quyền nhận xét. */
+export async function getSubmissionOwnerInfo(submissionId: string) {
+  return prisma.submission.findUnique({
+    where: { id: submissionId },
+    select: {
+      id: true,
+      assignment: {
+        select: {
+          examId: true,
+          classroom: { select: { id: true, teacherId: true } },
+          exam: { select: { teacherId: true } },
+        },
+      },
+    },
+  });
 }
 
 /** Câu hỏi để làm bài — KHÔNG kèm isCorrect, tránh lộ đáp án ra client. */
@@ -225,7 +267,7 @@ export async function getSubmissionResult(submissionId: string) {
   const submission = await prisma.submission.findUnique({
     where: { id: submissionId },
     include: {
-      student: { select: { id: true, fullName: true } },
+      student: { select: { id: true, fullName: true, isGuest: true } },
       answers: { select: { questionId: true, optionId: true, isCorrect: true } },
       assignment: {
         select: {

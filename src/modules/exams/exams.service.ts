@@ -179,8 +179,11 @@ export async function getExamOverview(user: SessionUser, examId: string) {
       maxScore: true,
       attempt: true,
       leaveCount: true,
+      takerClass: true,
+      takerNumber: true,
+      comment: true,
       studentId: true,
-      student: { select: { id: true, fullName: true, email: true, phone: true } },
+      student: { select: { id: true, fullName: true, email: true, phone: true, isGuest: true } },
       assignment: { select: { classroom: { select: { name: true } } } },
     },
   });

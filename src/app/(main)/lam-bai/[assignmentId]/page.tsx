@@ -3,13 +3,16 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requirePagePermission } from "@/common/guards/page.guard";
 import { ASSIGNMENT_STATUS_LABEL, assignmentStatus } from "@/common/enums";
-import { Alert, Card } from "@/components/ui";
+import { Alert } from "@/components/ui";
+import { getTakerProfile } from "@/modules/auth/guest";
+import { ExamStartCard } from "@/modules/submissions/components/exam-start-card";
 import { formatDateTime, formatScore, toScale10 } from "@/lib/utils";
 import { getVisibleAssignment } from "@/modules/assignments/assignments.service";
 import { PriceNotice } from "@/modules/publish/components/price-notice";
 import { attemptsLeft, canSeeScore, takeSettings } from "@/modules/publish/publish.types";
 import {
   canTakeAssignment,
+  countExamSubmissions,
   finalizeIfExpired,
   findLatestSubmission,
   getPracticeProgress,
@@ -37,7 +40,7 @@ export default async function TakeExamPage({
 
   const { exam } = assignment;
   const settings = takeSettings(assignment, exam.onlineConfig);
-  const latest = await findLatestSubmission(assignment.id, user.id);
+  const [latest, taker] = await Promise.all([findLatestSubmission(assignment.id, user.id), getTakerProfile(user.id)]);
 
   // Đang làm dở
   if (latest && !latest.submittedAt) {
@@ -61,6 +64,7 @@ export default async function TakeExamPage({
       <ExamTaker
         submissionId={latest.id}
         title={exam.title}
+        studentName={taker.fullName}
         deadline={deadline.toISOString()}
         questions={questions}
         headerNote={settings.headerNote}
@@ -82,39 +86,65 @@ export default async function TakeExamPage({
     canSeeScore(settings, { dueAt: assignment.dueAt, score10: toScale10(a.score ?? 0, a.maxScore) });
 
   return (
-    <Card className="mx-auto max-w-xl space-y-4">
-      <div>
-        <h1 className="text-xl font-bold text-ink">{exam.title}</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          {[assignment.classroom?.name, practice ? "Luyện tập" : "Kiểm tra"].filter(Boolean).join(" · ")}
-        </p>
-      </div>
-      {exam.description && <p className="text-sm whitespace-pre-wrap text-ink">{exam.description}</p>}
-      <ul className="space-y-1 text-sm text-ink">
-        <li>Số câu: {exam._count.questions}</li>
-        <li>Thời gian: {exam.durationMinutes} phút</li>
-        <li>Hạn nộp: {assignment.dueAt ? formatDateTime(assignment.dueAt) : "Không giới hạn"}</li>
-        <li>
-          Số lượt làm:{" "}
-          {settings.maxAttempts === 0 ? "không giới hạn" : `${attempts.length}/${settings.maxAttempts} lượt đã dùng`}
-        </li>
-      </ul>
+    <div className="space-y-4 pt-2">
+      <ExamStartCard
+        title={exam.title}
+        code={exam.onlineConfig?.publishedAt ? exam.onlineConfig.code : null}
+        subtitle={assignment.classroom?.name}
+        durationMinutes={exam.durationMinutes}
+        openAt={assignment.openAt}
+        dueAt={assignment.dueAt}
+        questionCount={exam._count.questions}
+        practice={practice}
+        totalAttempts={await countExamSubmissions(exam.id)}
+        used={attempts.length}
+        maxAttempts={settings.maxAttempts}
+      >
+        {exam.description && <p className="text-sm whitespace-pre-wrap text-ink">{exam.description}</p>}
+        <PriceNotice mode={exam.priceMode} price={exam.price} note={exam.priceNote} />
+        {settings.preNotice && (
+          <Alert>
+            <p className="font-medium">Thông báo từ giáo viên</p>
+            <p className="mt-1 whitespace-pre-wrap">{settings.preNotice}</p>
+          </Alert>
+        )}
 
-      <PriceNotice mode={exam.priceMode} price={exam.price} note={exam.priceNote} />
+        {status === "OPEN" ? (
+          <>
+            <p className="text-sm text-ink-soft">
+              {practice
+                ? "Luyện tập: câu hỏi hiện từng câu một, trả lời xong sẽ biết ngay đáp án đúng."
+                : "Đồng hồ bắt đầu chạy khi bấm nút. Hết giờ bài sẽ tự nộp."}
+              {settings.monitorLeave && " Bài thi có giám sát: không rời khỏi trang trong lúc làm bài."}
+              {settings.labMode && " Nộp bài xong hệ thống sẽ tự đăng xuất."}
+            </p>
+            <StartButton
+              assignmentId={assignment.id}
+              needPassword={Boolean(settings.password)}
+              askInfo={taker.isGuest}
+              defaultName={taker.isGuest ? taker.fullName : ""}
+              label={attempts.length > 0 ? "Làm lại" : practice ? "Bắt đầu luyện tập" : "Bắt đầu thi"}
+            />
+          </>
+        ) : (
+          <Alert variant="danger">
+            {ASSIGNMENT_STATUS_LABEL[status]}
+            {status === "UPCOMING" && ` — mở lúc ${formatDateTime(assignment.openAt)}`}
+          </Alert>
+        )}
+      </ExamStartCard>
 
-      {settings.preNotice && (
-        <Alert>
-          <p className="font-medium">Thông báo từ giáo viên</p>
-          <p className="mt-1 whitespace-pre-wrap">{settings.preNotice}</p>
-        </Alert>
-      )}
-
-      {attempts.length > 0 && (
-        <div className="rounded-lg border border-line px-4 py-3 text-sm">
-          <p className="font-medium text-ink">Các lượt đã làm</p>
-          <ul className="mt-2 space-y-1">
+      {/* Lịch sử làm bài — mở sẵn khi đã có lượt nộp. */}
+      <details className="mx-auto w-full max-w-[560px] text-sm" open={attempts.length > 0}>
+        <summary className="mx-auto w-fit cursor-pointer list-none rounded-md border border-line bg-surface px-3 py-2 text-ink-soft hover:text-ink">
+          Xem lịch sử làm bài
+        </summary>
+        {attempts.length === 0 ? (
+          <p className="mt-3 text-center text-ink-soft">Bạn chưa nộp lượt nào.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-line rounded-lg bg-surface px-4 shadow-sm">
             {attempts.map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-3 text-ink-soft">
+              <li key={a.id} className="flex items-center justify-between gap-3 py-2.5 text-ink-soft">
                 <span>
                   Lượt {a.attempt} · {formatDateTime(a.submittedAt)}
                 </span>
@@ -124,30 +154,8 @@ export default async function TakeExamPage({
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {status === "OPEN" ? (
-        <>
-          <Alert>
-            {practice
-              ? "Luyện tập: câu hỏi hiện từng câu một, trả lời xong sẽ biết ngay đáp án đúng."
-              : "Đồng hồ bắt đầu chạy khi bấm nút. Hết giờ bài sẽ tự nộp."}
-            {settings.monitorLeave && " Bài thi có giám sát: không rời khỏi trang trong lúc làm bài."}
-            {settings.labMode && " Nộp bài xong hệ thống sẽ tự đăng xuất."}
-          </Alert>
-          <StartButton
-            assignmentId={assignment.id}
-            needPassword={Boolean(settings.password)}
-            label={attempts.length > 0 ? "Làm lại" : practice ? "Bắt đầu luyện tập" : "Bắt đầu làm bài"}
-          />
-        </>
-      ) : (
-        <Alert variant="danger">
-          {ASSIGNMENT_STATUS_LABEL[status]}
-          {status === "UPCOMING" && ` — mở lúc ${formatDateTime(assignment.openAt)}`}
-        </Alert>
-      )}
-    </Card>
+        )}
+      </details>
+    </div>
   );
 }

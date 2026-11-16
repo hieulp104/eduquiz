@@ -35,6 +35,7 @@ import { cn, formatDateTime, formatScore, toScale10 } from "@/lib/utils";
 import { getExamOverview } from "@/modules/exams/exams.service";
 import { formatDuration, rankRows, scoreSummary, type ResultRow } from "@/modules/exams/exam-stats";
 import { CopyLinkButton } from "@/modules/exams/components/copy-link-button";
+import { CommentEditor } from "@/modules/submissions/components/comment-editor";
 import { DeleteExamButton } from "@/modules/exams/components/delete-exam-button";
 import { AUDIENCE_LABEL, OPEN_AUDIENCE_NAME, PRICE_MODE_LABEL, formatPrice } from "@/modules/publish/publish.types";
 
@@ -82,7 +83,12 @@ export default async function ExamDetailPage({
         studentId: s.studentId,
         studentName: s.student.fullName,
         phone: s.student.phone,
-        email: s.student.email,
+        // Tài khoản ẩn danh chỉ có email nội bộ — không dùng để tìm / hiển thị.
+        email: s.student.isGuest ? "" : s.student.email,
+        isGuest: s.student.isGuest,
+        takerClass: s.takerClass,
+        takerNumber: s.takerNumber,
+        comment: s.comment,
         className: audienceName(s.assignment),
         score10: toScale10(s.score ?? 0, s.maxScore),
         seconds: (s.submittedAt!.getTime() - s.startedAt.getTime()) / 1000,
@@ -115,6 +121,16 @@ export default async function ExamDetailPage({
       (!q || [r.studentName, r.phone ?? "", r.email].some((v) => v.toLowerCase().includes(q))),
   );
   const classNames = [...new Set(exam.assignments.map(audienceName))];
+  /** Số học sinh đã thi theo từng đối tượng — nhãn các tab. */
+  const doneBy = (name: string | null) => new Set(allRows.filter((r) => !name || r.className === name).map((r) => r.studentId)).size;
+  const tabHref = (name: string | null) => {
+    const qs = new URLSearchParams();
+    if (name) qs.set("lop", name);
+    if (sp.q) qs.set("q", sp.q);
+    return `/de-thi/${exam.id}${qs.size ? `?${qs}` : ""}`;
+  };
+  const tabs = [...(classNames.length > 1 ? [null] : []), ...classNames];
+  const activeTab = classNames.length > 1 ? (sp.lop && classNames.includes(sp.lop) ? sp.lop : null) : (classNames[0] ?? null);
 
   const href = (xem: View) => `/de-thi/${exam.id}${xem === "danh-sach" ? "" : `?xem=${xem}`}`;
   const info: { icon: LucideIcon; text: string }[] = [
@@ -293,32 +309,38 @@ export default async function ExamDetailPage({
                   className="h-9 w-56 rounded-md border border-line bg-surface pr-3 pl-8 text-sm text-ink placeholder:text-ink-faint focus:border-brand-500 focus:outline-none"
                 />
               </label>
-              {classNames.length > 1 && (
-                <select
-                  name="lop"
-                  defaultValue={sp.lop ?? ""}
-                  aria-label="Lọc theo lớp"
-                  className="h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink"
-                >
-                  <option value="">Tất cả lớp</option>
-                  {classNames.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              )}
+              {sp.lop && <input type="hidden" name="lop" value={sp.lop} />}
               <button type="submit" className={buttonClass("secondary", "sm")}>
-                Lọc
+                Tìm
               </button>
             </form>
+
+            {tabs.length > 0 && allRows.length > 0 && (
+              <nav aria-label="Lọc theo đối tượng" className="mt-3 flex flex-wrap gap-x-1 border-b border-line text-sm">
+                {tabs.map((name) => (
+                  <Link
+                    key={name ?? "tat-ca"}
+                    href={tabHref(name)}
+                    aria-current={activeTab === name ? "page" : undefined}
+                    className={cn(
+                      "-mb-px border-b-2 px-5 py-2.5",
+                      activeTab === name
+                        ? "border-brand-600 font-medium text-ink"
+                        : "border-transparent text-ink-soft hover:text-ink",
+                    )}
+                  >
+                    {name ?? "Tất cả"} ({doneBy(name)})
+                  </Link>
+                ))}
+              </nav>
+            )}
 
             {allRows.length === 0 ? (
               <EmptyResults href={settingsHref} assigned={assigned} canAssign={canAssign} />
             ) : rows.length === 0 ? (
               <p className="py-16 text-center text-sm text-ink-soft">Không có học sinh nào khớp tìm kiếm.</p>
             ) : (
-              <ResultsTable rows={rows} />
+              <ResultCards rows={rows} />
             )}
           </>
         )}
@@ -327,7 +349,26 @@ export default async function ExamDetailPage({
   );
 }
 
-type Row = ResultRow & { studentId: string; phone: string | null; email: string; attempt: number; leaveCount: number };
+type Row = ResultRow & {
+  studentId: string;
+  phone: string | null;
+  email: string;
+  attempt: number;
+  leaveCount: number;
+  isGuest: boolean;
+  takerClass: string | null;
+  takerNumber: string | null;
+  comment: string | null;
+};
+
+/** "Nguyễn Tuệ Hằng" → "NH" (chữ đầu của từ đầu + từ cuối). */
+function initials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return ".";
+  const first = [...words[0]][0] ?? "";
+  const last = words.length > 1 ? ([...words[words.length - 1]][0] ?? "") : "";
+  return (first + last).toUpperCase();
+}
 
 function EmptyResults({ href, assigned, canAssign }: { href: string; assigned: boolean; canAssign: boolean }) {
   return (
@@ -347,50 +388,56 @@ function EmptyResults({ href, assigned, canAssign }: { href: string; assigned: b
   );
 }
 
-function ResultsTable({ rows }: { rows: Row[] }) {
-  const multi = rows.some((r) => r.attempt > 1);
-  const monitored = rows.some((r) => r.leaveCount > 0);
+/** Danh sách đã thi dạng thẻ: mỗi lượt nộp 1 thẻ (tên, điểm, thời gian, nhận xét của giáo viên). */
+function ResultCards({ rows }: { rows: Row[] }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
-        <thead>
-          <tr className="border-b border-line text-left text-ink-soft">
-            <th className="py-3 pr-3 font-normal">STT</th>
-            <th className="py-3 pr-3 font-normal">Họ và tên</th>
-            <th className="py-3 pr-3 font-normal">Lớp</th>
-            {multi && <th className="py-3 pr-3 font-normal">Lượt</th>}
-            <th className="py-3 pr-3 font-normal">Điểm</th>
-            <th className="py-3 pr-3 font-normal">Thời gian làm</th>
-            {monitored && <th className="py-3 pr-3 font-normal">Rời trang</th>}
-            <th className="py-3 pr-3 font-normal">Nộp lúc</th>
-            <th className="py-3 font-normal" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={r.id} className="border-b border-line last:border-0">
-              <td className="py-3 pr-3 text-ink-soft">{i + 1}</td>
-              <td className="py-3 pr-3 font-medium text-ink">{r.studentName}</td>
-              <td className="py-3 pr-3 text-ink-soft">{r.className}</td>
-              {multi && <td className="py-3 pr-3 text-ink-soft tabular-nums">{r.attempt}</td>}
-              <td className="py-3 pr-3 font-semibold text-brand-700 tabular-nums dark:text-brand-300">{formatScore(r.score10)}</td>
-              <td className="py-3 pr-3 text-ink-soft">{formatDuration(r.seconds)}</td>
-              {monitored && (
-                <td className={cn("py-3 pr-3 tabular-nums", r.leaveCount > 0 ? "font-medium text-danger-600" : "text-ink-soft")}>
-                  {r.leaveCount} lần
-                </td>
-              )}
-              <td className="py-3 pr-3 text-ink-soft">{formatDateTime(r.submittedAt)}</td>
-              <td className="py-3 text-right">
-                <Link href={`/ket-qua/${r.id}`} className="text-brand-700 hover:underline dark:text-brand-300">
-                  Xem bài
+    <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      {rows.map((r) => {
+        const taker = [r.takerClass && `Lớp ${r.takerClass}`, r.takerNumber && `STT ${r.takerNumber}`].filter(Boolean).join(" · ");
+        const lines: { label: string; value: string; danger?: boolean }[] = [
+          ...(taker ? [{ label: "Thông tin:", value: taker }] : []),
+          { label: "Thời gian làm bài:", value: formatDuration(r.seconds) },
+          { label: "Thời gian nộp bài:", value: formatDateTime(r.submittedAt) },
+          ...(r.leaveCount > 0 ? [{ label: "Rời trang làm bài:", value: `${r.leaveCount} lần`, danger: true }] : []),
+        ];
+        return (
+          <li key={r.id} className="rounded-md bg-muted/60 text-sm">
+            <div className="flex items-center gap-4 border-b border-line px-3 py-3">
+              <span
+                aria-hidden
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-line text-base font-semibold text-ink"
+              >
+                {initials(r.studentName)}
+              </span>
+              <div className="min-w-0">
+                <Link
+                  href={`/ket-qua/${r.id}`}
+                  title="Xem bài làm"
+                  className="block truncate font-medium text-ink hover:text-brand-700 dark:hover:text-brand-300"
+                >
+                  {r.studentName}
                 </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                <p className="mt-0.5 text-xs text-ink-soft">
+                  Điểm: <b className="font-semibold text-ink tabular-nums">{formatScore(r.score10)}</b> (Lần thi: {r.attempt})
+                  {r.isGuest && " · Ẩn danh"}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 px-3 py-2.5 text-xs">
+              <dl className="space-y-2">
+                {lines.map((l) => (
+                  <div key={l.label} className="flex justify-between gap-3">
+                    <dt className="text-ink-soft">{l.label}</dt>
+                    <dd className={cn("text-right font-medium", l.danger ? "text-danger-600" : "text-ink")}>{l.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <CommentEditor submissionId={r.id} comment={r.comment} />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

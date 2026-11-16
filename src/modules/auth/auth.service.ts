@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { authConfig } from "@/modules/auth/auth.config";
 import { loginSchema } from "@/modules/auth/auth.schema";
+import { findActiveGuest, verifyGuestTicket } from "@/modules/auth/guest";
 import { prisma } from "@/shared/prisma/prisma.service";
 import type { SessionUser } from "@/common/permissions/permissions";
 
@@ -52,6 +53,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!(await bcrypt.compare(password, user.passwordHash))) return null;
 
         return { id: user.id, email: user.email, name: user.fullName };
+      },
+    }),
+    // Tài khoản ẩn danh (khách làm bài qua link): đổi vé 1 lần do server ký lấy phiên đăng nhập.
+    Credentials({
+      id: "guest",
+      credentials: { ticket: { type: "text" } },
+      async authorize(raw) {
+        const userId = typeof raw?.ticket === "string" ? verifyGuestTicket(raw.ticket) : null;
+        const user = userId ? await findActiveGuest(userId) : null;
+        return user ? { id: user.id, email: user.email, name: user.fullName } : null;
       },
     }),
   ],

@@ -145,6 +145,39 @@ export async function findPublishedByCode(code: string) {
 }
 
 /**
+ * Bài giao "link chung" của đề đã xuất bản cho TẤT CẢ mọi người — thứ duy nhất khách chưa đăng nhập làm được.
+ * Trả null nếu mã sai, đề chưa xuất bản hoặc chỉ giao cho lớp / học sinh cụ thể.
+ */
+export async function findOpenAssignmentByCode(code: string) {
+  return prisma.assignment.findFirst({
+    where: {
+      classId: null,
+      deletedAt: null,
+      exam: { deletedAt: null, onlineConfig: { code: code.toLowerCase(), publishedAt: { not: null }, audience: "ALL" } },
+    },
+    select: {
+      id: true,
+      openAt: true,
+      dueAt: true,
+      showAnswer: true,
+      exam: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          durationMinutes: true,
+          priceMode: true,
+          price: true,
+          priceNote: true,
+          onlineConfig: true,
+          _count: { select: { questions: true } },
+        },
+      },
+    },
+  });
+}
+
+/**
  * Bài giao mà học sinh này làm được qua link chung của đề:
  * ưu tiên lớp học sinh đang học; không có thì bài giao "link chung" nếu học sinh thuộc đối tượng.
  */

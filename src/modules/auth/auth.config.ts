@@ -21,6 +21,8 @@ export const authConfig = {
       const { pathname } = request.nextUrl;
       const isPublic =
         pathname === "/login" ||
+        // Link làm bài của đề đã xuất bản — khách chưa đăng nhập vẫn mở được (trang tự kiểm tra đối tượng).
+        pathname.startsWith("/thi/") ||
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico";

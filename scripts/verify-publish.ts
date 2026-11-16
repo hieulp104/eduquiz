@@ -14,12 +14,27 @@ import { createExam } from "@/modules/exams/exams.service";
 import { examSettingsSchema } from "@/modules/exams/exams.schema";
 import { listAssignmentsForStudent } from "@/modules/assignments/assignments.service";
 import { onlineSettingsSchema } from "@/modules/publish/publish.schema";
-import { findPublishedByCode, resolveAssignmentForStudent, saveOnlineSettings } from "@/modules/publish/publish.service";
+import {
+  createGuestUser,
+  findActiveGuest,
+  getTakerProfile,
+  renameGuest,
+  signGuestTicket,
+  verifyGuestTicket,
+} from "@/modules/auth/guest";
+import {
+  findOpenAssignmentByCode,
+  findPublishedByCode,
+  resolveAssignmentForStudent,
+  saveOnlineSettings,
+} from "@/modules/publish/publish.service";
 import { attemptsLeft, canSeeAnswers, canSeeScore, takeSettings } from "@/modules/publish/publish.types";
 import {
   answerPracticeQuestion,
   canTakeAssignment,
+  countExamSubmissions,
   getSubmissionResult,
+  setSubmissionComment,
   gradeAndSubmit,
   startSubmission,
 } from "@/modules/submissions/submissions.service";
@@ -157,6 +172,7 @@ async function main() {
     assert.deepEqual([saved.purpose, saved.priceMode, saved.price], ["HK1_MIDTERM", "PAID_ENTRY", 50_000]);
     assert.ok(!saved.priceNote.includes("script") && saved.priceNote.includes("<b>1 lần</b>"), "mô tả giá phải được lọc HTML");
     assert.ok((await listAssignmentsForStudent(an.id)).some((a) => a.examId === exam.id), "học sinh trong lớp thấy bài");
+    assert.equal(await findOpenAssignmentByCode(pub.code), null, "đề giao theo lớp: khách chưa đăng nhập không làm được");
 
     // ── Đổi sang "Tất cả mọi người": bài giao lớp chưa ai làm bị gỡ, còn 1 bài "link chung"
     await save({ audience: "ALL" });
@@ -167,6 +183,40 @@ async function main() {
     const config = await findPublishedByCode(pub.code.toUpperCase());
     assert.ok(config, "mã link không phân biệt hoa thường");
     assert.equal(await resolveAssignmentForStudent(config, an.id), open.id);
+
+    // ── Khách (chưa đăng nhập) làm qua link: tài khoản ẩn danh mang tên vừa nhập, điểm gắn vào tài khoản đó
+    assert.equal((await findOpenAssignmentByCode(pub.code.toUpperCase()))?.id, open.id, "đề cho tất cả mọi người: khách làm được");
+    const guest = await createGuestUser("Khách verify");
+    try {
+      const ticket = signGuestTicket(guest.id);
+      assert.equal(verifyGuestTicket(ticket), guest.id);
+      assert.equal(verifyGuestTicket(ticket.replace(/.$/, (c) => (c === "0" ? "1" : "0"))), null, "vé bị sửa chữ ký");
+      assert.equal(verifyGuestTicket(ticket, Date.now() + 2 * 60 * 1000), null, "vé hết hạn sau 1 phút");
+      assert.equal(verifyGuestTicket("abc"), null);
+      assert.ok(await findActiveGuest(guest.id));
+      assert.equal(await findActiveGuest(an.id), null, "vé ẩn danh không đăng nhập được tài khoản thật");
+
+      assert.equal(await canTakeAssignment(guest.id, open), true);
+      const run = await startSubmission(open.id, exam.id, guest.id, 2, { className: "8A", number: "17" });
+      assert.deepEqual([run?.takerClass, run?.takerNumber], ["8A", "17"]);
+      await renameGuest(guest.id, "Nguyễn Văn Khách");
+      await renameGuest(an.id, "Không được đổi");
+      assert.deepEqual(await getTakerProfile(guest.id), { fullName: "Nguyễn Văn Khách", isGuest: true });
+      assert.equal((await getTakerProfile(an.id)).isGuest, false);
+      assert.notEqual((await getTakerProfile(an.id)).fullName, "Không được đổi", "chỉ đổi tên tài khoản ẩn danh");
+
+      assert.equal(await gradeAndSubmit(run!.id, {}), true);
+      await setSubmissionComment(run!.id, "Cần cố gắng hơn");
+      const graded = await getSubmissionResult(run!.id);
+      assert.deepEqual(
+        [graded?.submission.student.fullName, graded?.submission.student.isGuest, graded?.submission.comment],
+        ["Nguyễn Văn Khách", true, "Cần cố gắng hơn"],
+      );
+      assert.equal(await countExamSubmissions(exam.id), 1);
+    } finally {
+      await prisma.submission.deleteMany({ where: { studentId: guest.id } });
+      await prisma.user.delete({ where: { id: guest.id } });
+    }
 
     // ── 2 lượt làm, lượt 3 bị chặn
     const settings = takeSettings(open, open.exam.onlineConfig);
@@ -208,7 +258,9 @@ async function main() {
     assert.equal(result?.submission.score, 2.5, "chỉ câu 1 đúng");
     assert.equal(result?.submission.answers.length, 4);
 
-    console.log("✔ verify-publish: mục đích theo nhóm, xuất bản theo đối tượng, nhiều lượt làm, luyện tập, luật xem điểm / đáp án");
+    console.log(
+      "✔ verify-publish: mục đích theo nhóm, xuất bản theo đối tượng, khách làm qua link (tài khoản ẩn danh), nhiều lượt làm, luyện tập, luật xem điểm / đáp án",
+    );
   } finally {
     await prisma.submission.deleteMany({ where: { assignment: { examId: exam.id } } });
     await prisma.assignment.deleteMany({ where: { examId: exam.id } });
