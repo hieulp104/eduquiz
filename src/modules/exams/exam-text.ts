@@ -20,6 +20,8 @@ import { fromRuns, normalizeInline, sliceRuns, stripTags, toRuns, trimRuns, type
 export const LETTERS = "ABCDEFGH";
 
 export type ParsedOption = { content: string; isCorrect: boolean };
+/** Vị trí 1 phương án trong văn bản: dòng (0-based) + cột trên CHỮ THUẦN (đã bỏ thẻ) của nhãn và của nội dung. */
+export type OptionAt = { line: number; label: number; start: number; end: number };
 /** Đáp án đúng lấy từ đâu: dòng "Đáp án: X" · bảng đáp án cuối đề · dấu * trước nhãn. */
 export type AnswerSource = "line" | "key" | "star";
 
@@ -33,6 +35,8 @@ export type ParsedQuestion = {
   points: number;
   groupIndex: number | null;
   options: ParsedOption[];
+  /** Vị trí từng phương án (cùng thứ tự với `options`) — bộ đọc file dùng để gắn dấu * theo chữ tô màu. */
+  optionAt: OptionAt[];
   answerFrom: AnswerSource | null;
   answerLine: number | null;
   /** Mức độ: thẻ [NB] / [TH] / [VD] sau số câu. */
@@ -233,7 +237,7 @@ class AnswerKeyReader {
 }
 
 /** `marked`: nhãn "B." được gạch chân / in đậm riêng — cách đánh dấu đáp án đúng hay gặp trong file Word. */
-type DraftOption = { runs: Run[]; star: boolean; marked: boolean };
+type DraftOption = { runs: Run[]; star: boolean; marked: boolean; at: OptionAt };
 type DraftQuestion = {
   part: number;
   no: number;
@@ -270,17 +274,42 @@ type DraftGroup = { lines: string[]; line: number; questionCount: number; fixedO
 const groupText = (g: DraftGroup) => g.lines.join("\n").trim();
 const runsText = (runs: Run[]) => fromRuns(trimRuns(runs));
 
-const spanOptions = (spans: Span[], runs: Run[]): DraftOption[] =>
-  spans.map((s) => ({ runs: sliceRuns(runs, s.start, s.end), star: s.star, marked: styledAt(runs, s.labelAt) }));
+const spanOptions = (spans: Span[], runs: Run[], line: number): DraftOption[] =>
+  spans.map((s) => ({
+    runs: sliceRuns(runs, s.start, s.end),
+    star: s.star,
+    marked: styledAt(runs, s.labelAt),
+    at: { line, label: s.labelAt, start: s.start, end: s.end },
+  }));
 
 /** Một phương án trên cả dòng "B. …" (`om` khớp OPTION_START_RE trên đoạn cuối của `plain`). */
-function singleOption(om: RegExpMatchArray, plain: string, runs: Run[]): DraftOption {
-  const offset = plain.length - om[0].length;
+function singleOption(om: RegExpMatchArray, plain: string, runs: Run[], line: number): DraftOption {
+  const label = plain.length - om[0].length + om[0].search(/[A-H]/);
+  const start = plain.length - om[3].length;
   return {
-    runs: sliceRuns(runs, plain.length - om[3].length),
+    runs: sliceRuns(runs, start),
     star: om[1] === "*",
-    marked: styledAt(runs, offset + om[0].search(/[A-H]/)),
+    marked: styledAt(runs, label),
+    at: { line, label, start, end: plain.length },
   };
+}
+
+/** Các phần được gạch chân trong đề bài — mỗi phần là chữ liền nhau cùng gạch chân (chỗ trống gạch chân bỏ qua). */
+function underlinedParts(stem: Run[][]): string[] {
+  const parts: string[] = [];
+  for (const line of stem) {
+    let current = "";
+    const flush = () => {
+      if (current.replace(/[\s_.…]/g, "")) parts.push(current.trim());
+      current = "";
+    };
+    for (const r of line) {
+      if (r.u) current += r.text;
+      else flush();
+    }
+    flush();
+  }
+  return parts;
 }
 
 export function parseExamText(text: string, title = "Đề nhập từ file"): ParsedExam {
@@ -305,6 +334,8 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
   let sawPart = false;
   let lastNo = 0;
   let inSolution = false;
+  /** Số của tiêu đề phần gần nhất ("I.", "II."…). */
+  let lastSection = 0;
 
   const attach = (i: number, kind: LineKind) => {
     kinds[i] = kind;
@@ -381,10 +412,10 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       if (STARTS_WITH_OPTION_A.test(restPlain)) {
         // "1. A. miss<u>es</u>   B. fix<u>es</u>…" — đáp án ngay trên dòng số câu.
         const spans = inlineOptionSpans(plain, q.rest);
-        if (spans) current.options.push(...spanOptions(spans, runs));
+        if (spans) current.options.push(...spanOptions(spans, runs, i));
         else {
           const om = restPlain.match(OPTION_START_RE)!;
-          current.options.push(singleOption(om, plain, runs));
+          current.options.push(singleOption(om, plain, runs, i));
         }
       } else if (restPlain.trim()) {
         current.stem.push(sliceRuns(runs, q.rest));
@@ -398,8 +429,16 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       continue;
     }
     if (inSolution) {
-      attach(i, "solution");
-      continue;
+      // Tiêu đề phần kế tiếp ("II. Read the following…": in đậm cả dòng, số La Mã nối tiếp phần trước) kết thúc
+      // lời giải và mở nhóm mới — không thì lời dẫn + đoạn văn của phần sau bị nuốt vào lời giải của câu trước.
+      const section = sectionNumber(plain);
+      const isHeading = section > lastSection && section <= lastSection + 2 && runs.every((r) => r.b || !r.text.trim());
+      if (!isHeading) {
+        attach(i, "solution");
+        continue;
+      }
+      inSolution = false;
+      current = null;
     }
 
     // ── Dòng thẻ của nhóm: [cố định nhóm] [audio:id] — mở nhóm mới nếu cần ──
@@ -430,7 +469,7 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       if (spans && current.options.length >= 2 && /^\s*\*?A\s*[.)]/.test(plain)) {
         lastNo++;
         current = newDraft(part, lastNo, i, group, false);
-        current.options.push(...spanOptions(spans, runs));
+        current.options.push(...spanOptions(spans, runs, i));
         if (group) group.questionCount++;
         drafts.push(current);
         kinds[i] = "question";
@@ -438,15 +477,24 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
         continue;
       }
       if (spans) {
-        current.options.push(...spanOptions(spans, runs));
+        current.options.push(...spanOptions(spans, runs, i));
         attach(i, "option");
         continue;
       }
       // Câu tìm lỗi sai: dưới câu chỉ có nhãn "A  B  C  *D" đặt dưới các từ gạch chân.
-      const bare = plain.trim().split(/\s+/);
-      if (current.options.length === 0 && bare.length >= 2 && bare.every((t) => /^\*?[A-H]$/.test(t))) {
+      const bare = [...plain.matchAll(/\S+/g)];
+      if (current.options.length === 0 && bare.length >= 2 && bare.every((m) => /^\*?[A-H]$/.test(m[0]))) {
         current.options.push(
-          ...bare.map((t) => ({ runs: [{ text: t.replace("*", ""), b: false, i: false, u: false }], star: t.startsWith("*"), marked: false })),
+          ...bare.map((m): DraftOption => {
+            const star = m[0].startsWith("*");
+            const label = m.index + (star ? 1 : 0);
+            return {
+              runs: [{ text: m[0].replace("*", ""), b: false, i: false, u: false }],
+              star,
+              marked: styledAt(runs, label),
+              at: { line: i, label, start: label, end: label + 1 },
+            };
+          }),
         );
         current.bareLabels = true;
         attach(i, "option");
@@ -454,7 +502,7 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       }
       const om = plain.match(OPTION_START_RE);
       if (om) {
-        current.options.push(singleOption(om, plain, runs));
+        current.options.push(singleOption(om, plain, runs, i));
         attach(i, "option");
         continue;
       }
@@ -502,7 +550,9 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       continue;
     }
     const label = `${sawPart ? "Phần I, " : ""}Câu ${d.no}`;
-    const options = d.options.map((o) => ({ text: runsText(o.runs), star: o.star, marked: o.marked })).filter((o) => o.text);
+    const options = d.options
+      .map((o) => ({ text: runsText(o.runs), star: o.star, marked: o.marked, at: o.at }))
+      .filter((o) => o.text);
     if (options.length < 2) {
       warnings.push(
         options.length === 0
@@ -512,7 +562,10 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       continue;
     }
     if (d.bareLabels) {
-      warnings.push(`${label}: câu tìm lỗi sai — đáp án chỉ có nhãn A/B/C/D, hãy ghi rõ phần được gạch chân.`);
+      // Đề bài có đúng bấy nhiêu phần gạch chân → mỗi nhãn A/B/C/D chính là 1 phần đó (theo thứ tự).
+      const parts = underlinedParts(d.stem);
+      if (parts.length === options.length) options.forEach((o, k) => (o.text = parts[k]));
+      else warnings.push(`${label}: câu tìm lỗi sai — đáp án chỉ có nhãn A/B/C/D, hãy ghi rõ phần được gạch chân.`);
     }
     if (seenNo.has(d.no)) warnings.push(`${label}: số câu bị trùng — bảng đáp án có thể gán nhầm, nên đánh số lại.`);
     seenNo.add(d.no);
@@ -566,6 +619,7 @@ export function parseExamText(text: string, title = "Đề nhập từ file"): P
       points: 1,
       groupIndex: gi,
       options: options.slice(0, 8).map((o, i) => ({ content: o.text, isCorrect: i === correct })),
+      optionAt: options.slice(0, 8).map((o) => o.at),
       answerFrom: correct >= 0 ? answerFrom : null,
       answerLine: answerFrom === "line" ? d.answer!.line : null,
       level: d.level,
@@ -820,8 +874,15 @@ export function replaceQuestion(
 
 // ═══════════════════ Dọn văn bản đọc từ file ═══════════════════
 
+/**
+ * Dòng thông tin đầu trang: "Họ và tên…", "Lớp…", "Năm học…", "Thời gian làm bài…", "Đề thi có 2 trang"…
+ * Từ tiếng Anh ("Name", "Class", "Time", "Marks"…) phải kèm dấu ":" — không thì nhầm với lời dẫn "Mark the letter…".
+ */
 const HEADER_LINE_RE =
-  /^(Họ\s*(và)?\s*tên|Lớp|Trường|Thời\s*gian|Mã\s*đề|SBD|Số\s*báo\s*danh|Môn|Điểm|Name|Class|Time)\b/i;
+  /^\(?\s*(?:(?:Họ\s*(?:và)?\s*tên|Lớp|Trường|Sở|Phòng|UBND|Thời\s*gian|Mã\s*đề|SBD|Số\s*báo\s*danh|Môn|Điểm|Năm\s*học|Học\s*k[ỳì]|Ngày|Kỳ\s*thi|Kì\s*thi|Đề\s*(?:thi|kiểm\s*tra|số|chính\s*thức|gồm|có)|Thí\s*sinh|Giám\s*thị|Lời\s*phê)(?![\p{L}\p{N}])|(?:Full\s*name|Name|Class|Time(?:\s*allowed)?|Date|School(?:\s*year)?|Subject|Marks?|Teacher)\s*[:：])/iu;
+
+/** Ký hiệu nhóm "<g3>" đầu dòng trong file soạn theo mẫu của trang khác — bỏ đi, dòng đó vẫn là tiêu đề nhóm. */
+const GROUP_MARKER_RE = /^(\s*)<g\d*>\s*/i;
 
 /** Dòng đầu trang kiểu "TEST UNIT 2", "SỞ GD&ĐT…", "Họ và tên: ……" — không phải nội dung câu hỏi. */
 function isHeaderLine(plain: string): boolean {
@@ -832,16 +893,28 @@ function isHeaderLine(plain: string): boolean {
   return HEADER_LINE_RE.test(t) || /\.{5,}|…{3,}/.test(t);
 }
 
+/** Dọn 1 dòng đọc từ file: các loại dấu cách đặc biệt của Word → dấu cách thường, bỏ ký hiệu nhóm lạ, bỏ khoảng trắng cuối dòng. */
+export function tidyLine(line: string): string {
+  const clean = line.replace(/\p{Zs}/gu, " ").trimEnd();
+  // Ký hiệu có thể bị ngắt giữa 2 kiểu chữ ("<b><g3</b>> …") → dò trên chữ thuần rồi cắt theo đoạn.
+  const marker = stripTags(clean).match(GROUP_MARKER_RE);
+  return marker ? marker[1] + fromRuns(sliceRuns(toRuns(clean), marker[0].length)) : clean;
+}
+
+/** Chỉ số các dòng được giữ lại: bỏ dòng trống và phần đầu trang (tên đề, họ tên, lớp…) trước câu hỏi / lời dẫn đầu tiên. */
+export function tidyKeep(lines: string[]): number[] {
+  const kept = lines.flatMap((l, i) => (stripTags(l).trim() ? [i] : []));
+  let start = 0;
+  while (start < kept.length && isHeaderLine(stripTags(lines[kept[start]]))) start++;
+  return kept.slice(start);
+}
+
 /** Bỏ dòng trống và phần đầu trang (tên đề, họ tên, lớp…) trước câu hỏi / lời dẫn đầu tiên. */
 export function tidyImportedText(text: string): string {
-  const lines = text
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((l) => l.replace(/ /g, " ").trimEnd())
-    .filter((l) => stripTags(l).trim());
-  let start = 0;
-  while (start < lines.length && isHeaderLine(stripTags(lines[start]))) start++;
-  return lines.slice(start).join("\n");
+  const lines = text.replace(/\r/g, "").split("\n").map(tidyLine);
+  return tidyKeep(lines)
+    .map((i) => lines[i])
+    .join("\n");
 }
 
 

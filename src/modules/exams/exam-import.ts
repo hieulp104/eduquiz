@@ -1,19 +1,24 @@
 /**
  * Đọc đề từ file (CHỈ chạy ở server — dùng mammoth / exceljs):
- *   .docx → văn bản giữ đậm / nghiêng / gạch chân (<b> <i> <u>)
+ *   .docx → văn bản giữ đậm / nghiêng / gạch chân (<b> <i> <u>); nhãn đánh số tự động của Word được ghi lại
+ *           thành chữ và đáp án tô màu / tô nền được đổi thành dấu * (docx-prepare.ts)
  *   .txt  → văn bản
  *   .tex  (gói ex_test) / .xlsx → câu hỏi → văn bản (serializeExam)
  * Kết quả là VĂN BẢN cho trình soạn đề (định dạng ở exam-text.ts) — chưa lưu gì.
  */
 import path from "node:path";
-import { normalizeInline, stripTags } from "@/lib/inline-format";
+import { fromRuns, stripTags, toRuns, trimRuns, type Run } from "@/lib/inline-format";
+import { MARK_CLOSE, MARK_OPEN, MARK_SEP, prepareDocx } from "@/modules/exams/docx-prepare";
 import {
   parseExamText,
   serializeExam,
   tidyImportedText,
+  tidyKeep,
+  tidyLine,
   type ImportResult,
   type ImportedQuestion,
   type ParsedExam,
+  type ParsedQuestion,
 } from "@/modules/exams/exam-text";
 import type { ExamDraftPayload } from "@/modules/exams/exam-draft";
 
@@ -61,8 +66,8 @@ export function htmlToMarkup(html: string): string {
       const isItem = raw.includes(OL_ITEM);
       const l = raw.replaceAll(OL_ITEM, "");
       const lead = l.match(/^\s*/)![0];
-      let line = lead + normalizeInline(l);
-      const plain = stripTags(line);
+      let line = lead + importInline(l);
+      const plain = stripMarks(stripTags(line));
       const numbered = plain.match(NUMBERED_RE);
       if (numbered) lastNo = Number(numbered[1]);
       else if (isItem && looksLikeQuestion(plain)) {
@@ -75,6 +80,44 @@ export function htmlToMarkup(html: string): string {
     .join("\n");
 }
 
+/** Chỗ trống cần điền trong văn bản đề. */
+const BLANK = "______";
+const isGap = (ws: string) => ws.includes("\t") || ws.length >= 3;
+
+/**
+ * Chuẩn hóa 1 dòng đọc từ Word (như normalizeInline) + 2 việc riêng của chữ gạch chân:
+ *  - Tab / dãy dấu cách GẠCH CHÂN là chỗ trống cần điền (Word hiện thành đường kẻ) → "______";
+ *    không đổi thì "Your paintings are ____ his." mất chỗ trống.
+ *  - Khoảng trắng dính ở 2 mép phần gạch chân ("<u>is </u>the") đưa ra ngoài thẻ.
+ */
+function importInline(markup: string): string {
+  const runs: Run[] = [];
+  // Chỗ trống không mang kiểu chữ (đậm / nghiêng) của phím Tab gốc.
+  const gap = (r: Run, ws: string): Run => (isGap(ws) ? { text: BLANK, b: false, i: false, u: false } : { ...r, text: ws, u: false });
+  for (const r of toRuns(markup)) {
+    if (!r.u) {
+      runs.push(r);
+      continue;
+    }
+    const lead = r.text.match(/^\s*/)![0];
+    if (lead.length === r.text.length) {
+      runs.push(gap(r, r.text));
+      continue;
+    }
+    const trail = r.text.match(/\s*$/)![0];
+    if (lead) runs.push(gap(r, lead));
+    runs.push({ ...r, text: r.text.slice(lead.length, r.text.length - trail.length) });
+    if (trail) runs.push(gap(r, trail));
+  }
+  // Chỗ trống dính liền chữ ("are______his") → thêm dấu cách 2 bên.
+  runs.forEach((r, i) => {
+    if (r.text !== BLANK) return;
+    if (/[\p{L}\p{N}]$/u.test(runs[i - 1]?.text ?? "")) r.text = ` ${r.text}`;
+    if (/^[\p{L}\p{N}]/u.test(runs[i + 1]?.text ?? "")) r.text += " ";
+  });
+  return fromRuns(trimRuns(runs));
+}
+
 const OL_ITEM = "\u0001";
 const NUMBERED_RE = /^\s*(?:(?:Câu|Bài|Question)\s*)?(\d{1,3})\s*[.):]/i;
 
@@ -83,11 +126,124 @@ function looksLikeQuestion(plain: string): boolean {
   return /^\*?A\s*[.)]\s*\S.*\s(?:\*?B)\s*[.)]/.test(t) || /_{2,}|…|\.{4,}/.test(t) || /\?\s*$/.test(t);
 }
 
-/** .docx → văn bản. Công thức (Equation / MathType) và hình ảnh không đọc được → cảnh báo. */
+// ── Chữ tô màu / tô nền: docx-prepare.ts bọc bằng ký tự đánh dấu, ở đây đọc lại để tìm đáp án đúng ──
+
+const MARK_RE = new RegExp(`${MARK_OPEN}[^${MARK_SEP}]*${MARK_SEP}|${MARK_CLOSE}`, "g");
+const stripMarks = (s: string) => s.replace(MARK_RE, "");
+
+/** Vùng chữ được tô (vị trí trên chữ thuần của dòng, đã bỏ thẻ) + các "khóa màu" của nó. */
+type MarkRange = { start: number; end: number; keys: string[] };
+
+/** Tách ký tự đánh dấu khỏi 1 dòng → dòng sạch + các vùng được tô. */
+function readMarks(line: string): { text: string; marks: MarkRange[] } {
+  if (!line.includes(MARK_OPEN) && !line.includes(MARK_CLOSE)) return { text: line, marks: [] };
+  const marks: MarkRange[] = [];
+  let text = "";
+  let plain = 0;
+  let open: { keys: string[]; start: number } | null = null;
+  for (let i = 0; i < line.length; ) {
+    const ch = line[i];
+    const sep = ch === MARK_OPEN ? line.indexOf(MARK_SEP, i) : -1;
+    if (sep >= 0) {
+      open = { keys: line.slice(i + 1, sep).split("|").filter(Boolean), start: plain };
+      i = sep + 1;
+    } else if (ch === MARK_OPEN || ch === MARK_CLOSE) {
+      if (ch === MARK_CLOSE && open && plain > open.start) marks.push({ start: open.start, end: plain, keys: open.keys });
+      open = null;
+      i++;
+    } else {
+      const tag = ch === "<" ? line.slice(i, i + 4).match(/^<\/?[biu]>/i) : null;
+      text += tag ? tag[0] : ch;
+      if (!tag) plain++;
+      i += tag ? tag[0].length : 1;
+    }
+  }
+  return { text, marks };
+}
+
+/**
+ * Phương án được tô nổi bật KHÁC các phương án còn lại của cùng câu (màu chữ / highlight / màu nền) → chỉ số, không có → -1.
+ * Một phương án "mang" 1 khóa màu khi nhãn (chữ A/B/C/D) được tô, hoặc ít nhất nửa nội dung được tô.
+ * Chỉ nhận khi đúng 1 phương án có khóa mà không phương án nào khác có — cả 4 nhãn cùng tô xanh thì không phải đánh dấu đáp án.
+ */
+function pickMarkedOption(q: ParsedQuestion, marks: MarkRange[][], plains: string[]): number {
+  const keysOf = q.optionAt.map((at) => {
+    const ranges = marks[at.line] ?? [];
+    const keys = new Set<string>();
+    if (!ranges.length) return keys;
+    for (const r of ranges) if (at.label >= r.start && at.label < r.end) r.keys.forEach((k) => keys.add(k));
+    const text = plains[at.line] ?? "";
+    const hits = new Map<string, number>();
+    let total = 0;
+    for (let pos = at.start; pos < Math.min(at.end, text.length); pos++) {
+      if (!text[pos].trim()) continue;
+      total++;
+      for (const r of ranges) if (pos >= r.start && pos < r.end) r.keys.forEach((k) => hits.set(k, (hits.get(k) ?? 0) + 1));
+    }
+    for (const [k, n] of hits) if (n * 2 >= total) keys.add(k);
+    return keys;
+  });
+  const owners = new Map<string, number>();
+  for (const keys of keysOf) for (const k of keys) owners.set(k, (owners.get(k) ?? 0) + 1);
+  const unique = keysOf.flatMap((keys, i) => ([...keys].some((k) => owners.get(k) === 1) ? [i] : []));
+  return unique.length === 1 ? unique[0] : -1;
+}
+
+/** Chèn `insert` vào trước ký tự thứ `pos` của chữ thuần — đứng trước cả các thẻ mở liền trước ký tự đó. */
+function insertAtPlain(markup: string, pos: number, insert: string): string {
+  let plain = 0;
+  let anchor = 0;
+  for (let i = 0; i < markup.length; ) {
+    const tag = markup[i] === "<" ? markup.slice(i, i + 4).match(/^<(\/?)[biu]>/i) : null;
+    if (tag) {
+      i += tag[0].length;
+      if (tag[1]) anchor = i; // sau thẻ đóng
+      continue;
+    }
+    if (plain === pos) break;
+    plain++;
+    i++;
+    anchor = i;
+  }
+  return markup.slice(0, anchor) + insert + markup.slice(anchor);
+}
+
+/**
+ * Câu chưa có đáp án (không có dấu *, dòng "Đáp án", bảng đáp án) mà có đúng 1 phương án được tô nổi bật
+ * → ghi dấu * trước nhãn phương án đó. Trả về văn bản mới + số câu đã nhận.
+ */
+function applyMarkedAnswers(lines: string[], marks: MarkRange[][]): { text: string; picked: number } {
+  const text = lines.join("\n");
+  if (!marks.some((m) => m.length)) return { text, picked: 0 };
+  const plains = lines.map(stripTags);
+  const stars = new Map<number, number[]>();
+  let picked = 0;
+  for (const q of parseExamText(text).questions) {
+    const current = q.options.findIndex((o) => o.isCorrect);
+    // Đáp án ghi rõ (dấu *, dòng "Đáp án", bảng đáp án) được ưu tiên; đáp án suy từ nhãn in đậm / gạch chân thì màu thắng.
+    const explicit = current >= 0 && (q.answerFrom !== "star" || plains[q.optionAt[current].line]?.[q.optionAt[current].label - 1] === "*");
+    if (explicit) continue;
+    const pick = pickMarkedOption(q, marks, plains);
+    if (pick < 0 || pick === current) continue;
+    const at = q.optionAt[pick];
+    stars.set(at.line, [...(stars.get(at.line) ?? []), at.label]);
+    picked++;
+  }
+  const out = lines.map((line, i) =>
+    (stars.get(i) ?? []).sort((a, b) => b - a).reduce((l, pos) => insertAtPlain(l, pos, "*"), line),
+  );
+  return { text: out.join("\n"), picked };
+}
+
+/**
+ * .docx → văn bản. Nhãn đánh số tự động và đáp án tô màu được giữ lại (docx-prepare.ts);
+ * công thức (Equation / MathType) và hình ảnh không đọc được → cảnh báo.
+ */
 export async function docxToMarkup(buffer: Buffer): Promise<{ text: string; warnings: string[] }> {
+  const prepared = await prepareDocx(buffer);
   const mammoth = await import("mammoth");
   const { value } = await mammoth.convertToHtml(
-    { buffer },
+    { buffer: prepared.buffer },
     {
       styleMap: ["u => u"],
       // Không nhúng ảnh base64 vào HTML (ảnh chưa hỗ trợ, chỉ tốn bộ nhớ).
@@ -95,19 +251,28 @@ export async function docxToMarkup(buffer: Buffer): Promise<{ text: string; warn
     },
   );
   const warnings: string[] = [];
-  try {
-    const JSZip = (await import("jszip")).default;
-    const xml = (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("string")) ?? "";
-    const hasMath = xml.includes("<m:oMath") || xml.includes("<w:object");
-    const hasImage = xml.includes("<w:drawing") || xml.includes("<w:pict");
-    if (hasMath || hasImage) {
-      const what = [hasMath && "công thức", hasImage && "hình ảnh"].filter(Boolean).join(" và ");
-      warnings.push(`File có ${what} — phần này chưa đọc được nên có thể bị trống, vui lòng kiểm tra lại câu hỏi.`);
-    }
-  } catch {
-    /* không soi được XML thì thôi */
+  if (prepared.hasMath || prepared.hasImage) {
+    const what = [prepared.hasMath && "công thức", prepared.hasImage && "hình ảnh"].filter(Boolean).join(" và ");
+    warnings.push(`File có ${what} — phần này chưa đọc được nên có thể bị trống, vui lòng kiểm tra lại câu hỏi.`);
   }
-  return { text: tidyImportedText(htmlToMarkup(value)), warnings };
+
+  const items = htmlToMarkup(value)
+    .split("\n")
+    .map((raw) => {
+      const { text, marks } = readMarks(raw);
+      const clean = tidyLine(text);
+      // Dòng bị bỏ ký hiệu ở đầu (tiêu đề nhóm) thì vị trí đã lệch — không cần xét màu ở dòng đó.
+      return { text: clean, marks: clean.length === text.trimEnd().length ? marks : [] };
+    });
+  const keep = tidyKeep(items.map((x) => x.text));
+  const marked = applyMarkedAnswers(
+    keep.map((i) => items[i].text),
+    keep.map((i) => items[i].marks),
+  );
+  if (marked.picked) {
+    warnings.push(`Đáp án đúng của ${marked.picked} câu được nhận theo chữ tô màu / tô nền trong file — vui lòng xem lại trước khi lưu.`);
+  }
+  return { text: marked.text, warnings };
 }
 
 /** Đọc docx thành câu hỏi (dùng trong kiểm thử). */

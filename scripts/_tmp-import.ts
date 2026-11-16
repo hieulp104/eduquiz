@@ -24,3 +24,15 @@ async function main() {
 }
 
 main();
+
+// --q: in câu hỏi đã đọc (nhóm, nội dung, phương án, đáp án)
+export async function printQuestions(file: string) {
+  const draft = await importExamFile(path.basename(file), fs.readFileSync(file));
+  const parsed = parseExamText(draft.text, draft.title);
+  parsed.groups.forEach((g, i) => console.log(`[nhóm ${i + 1}] ${g.content.replace(/\n/g, " ⏎ ").slice(0, 150)}`));
+  for (const q of parsed.questions) {
+    const opts = q.options.map((o, i) => `${o.isCorrect ? "✔" : ""}${"ABCDEFGH"[i]}.${o.content}`).join(" | ");
+    console.log(`${String(q.no).padStart(2)} (g${q.groupIndex === null ? "-" : q.groupIndex + 1}) ${q.content.replace(/\n/g, " ⏎ ").slice(0, 80)}  ⟹ ${opts.slice(0, 150)}`);
+  }
+}
+if (process.argv.includes("--q")) void printQuestions(process.argv.filter((a) => !a.startsWith("--")).at(-1)!);

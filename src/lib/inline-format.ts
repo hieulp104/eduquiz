@@ -54,6 +54,8 @@ const sameStyle = (x: Style, y: Style) => x.b === y.b && x.i === y.i && x.u === 
 /**
  * Đoạn → chuỗi có thẻ, dạng gọn: gộp đoạn cùng kiểu, khoảng trắng đứng riêng chỉ giữ kiểu chung
  * của 2 bên (tránh "<b>a</b><b> </b><b>c</b>"), lồng thẻ theo thứ tự b › i › u.
+ * Riêng gạch chân KHÔNG tự thêm cho khoảng trắng: "<u>is</u> <u>with</u>" là 2 phần gạch chân tách nhau
+ * (câu tìm lỗi sai: mỗi phần ứng với 1 phương án) — nối lại thành "<u>is with</u>" là sai đề.
  */
 export function fromRuns(input: Run[]): string {
   const runs = input.filter((r) => r.text);
@@ -62,7 +64,7 @@ export function fromRuns(input: Run[]): string {
     const prev = runs[idx - 1];
     const next = runs[idx + 1];
     const keep = (k: keyof Style) => Boolean(prev?.[k] && next?.[k]);
-    return { text: r.text, b: keep("b"), i: keep("i"), u: keep("u") };
+    return { text: r.text, b: keep("b"), i: keep("i"), u: r.u && keep("u") };
   });
   const merged: Run[] = [];
   for (const r of norm) {
