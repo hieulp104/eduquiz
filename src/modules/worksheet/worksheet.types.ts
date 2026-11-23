@@ -8,7 +8,12 @@ export type BankTreeNode = {
   children: BankTreeNode[];
 };
 
-export type BankBook = { id: string; grade: number; title: string };
+export type BankBook = {
+  id: string;
+  grade: number;
+  subject: string;
+  title: string;
+};
 
 export type WorksheetQuestion = {
   id: string;

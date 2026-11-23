@@ -12,8 +12,8 @@ services:
       POSTGRES_DB: eduquiz
       TZ: Asia/Ho_Chi_Minh
     ports:
-      # 5432/5433 đã bị dự án khác (tamnest) chiếm trên máy dev → map ra 5434.
-      - "5434:5432"
+      # 5432–5436 đã bị các dự án khác chiếm trên máy dev → map ra 5437.
+      - "5437:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

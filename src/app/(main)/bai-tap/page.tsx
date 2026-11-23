@@ -4,7 +4,7 @@ import { CalendarClock, FileText, Paperclip, Plus, Search } from "lucide-react";
 import { requirePagePermission } from "@/common/guards/page.guard";
 import { hasPermission } from "@/common/permissions/permissions";
 import { HOMEWORK_PURPOSE_LABEL } from "@/common/enums";
-import { MATH_WORKSHEET_HREF } from "@/config/navigation";
+import { WORKSHEET_HREF } from "@/config/navigation";
 import { Badge, buttonClass, EmptyState } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { listHomeworks } from "@/modules/homework/homework.service";
@@ -33,7 +33,11 @@ export default async function HomeworkListPage({
             aria-label="Tìm kiếm theo tên lớp"
             className="h-[38px] w-full rounded-md border border-line bg-surface pr-9 pl-3 text-sm text-ink placeholder:text-ink-faint focus:border-brand-500 focus:outline-none"
           />
-          <button type="submit" aria-label="Tìm" className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-soft">
+          <button
+            type="submit"
+            aria-label="Tìm"
+            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-soft"
+          >
             <Search className="size-4" />
           </button>
         </form>
@@ -47,10 +51,10 @@ export default async function HomeworkListPage({
               <Plus className="size-4" /> Tạo bài tập
             </Link>
             <Link
-              href={MATH_WORKSHEET_HREF}
+              href={WORKSHEET_HREF}
               className="inline-flex h-[38px] items-center justify-center gap-2 rounded-md bg-brand-100 px-4 text-sm font-medium text-brand-800 shadow-sm hover:bg-brand-200 dark:bg-brand-900/40 dark:text-brand-200"
             >
-              <Plus className="size-4" /> Tạo phiếu bài tập Toán
+              <Plus className="size-4" /> Soạn phiếu từ ngân hàng câu hỏi
             </Link>
           </div>
         )}
@@ -60,7 +64,10 @@ export default async function HomeworkListPage({
 
       {homeworks.length === 0 ? (
         q ? (
-          <EmptyState title="Không tìm thấy bài tập" description={`Không có bài tập nào khớp “${q}”.`} />
+          <EmptyState
+            title="Không tìm thấy bài tập"
+            description={`Không có bài tập nào khớp “${q}”.`}
+          />
         ) : (
           <EmptyState
             title="Chưa có bài tập nào"
@@ -86,9 +93,12 @@ export default async function HomeworkListPage({
                   <FileText className="size-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-ink group-hover:text-brand-700">{hw.title}</p>
+                  <p className="truncate font-medium text-ink group-hover:text-brand-700">
+                    {hw.title}
+                  </p>
                   <p className="mt-0.5 text-sm text-ink-soft">
-                    Khối {hw.grade} · {hw.subject} · {HOMEWORK_PURPOSE_LABEL[hw.purpose]}
+                    Khối {hw.grade} · {hw.subject} ·{" "}
+                    {HOMEWORK_PURPOSE_LABEL[hw.purpose]}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {hw.classes.map(({ classroom }) => (
@@ -101,7 +111,9 @@ export default async function HomeworkListPage({
                 <div className="flex flex-col items-end gap-1 text-xs text-ink-soft">
                   <span className="flex items-center gap-1.5">
                     <CalendarClock className="size-3.5" />
-                    {hw.dueAt ? `Hạn ${formatDateTime(hw.dueAt)}` : "Không giới hạn thời gian"}
+                    {hw.dueAt
+                      ? `Hạn ${formatDateTime(hw.dueAt)}`
+                      : "Không giới hạn thời gian"}
                   </span>
                   {hw._count.files > 0 && (
                     <span className="flex items-center gap-1.5">

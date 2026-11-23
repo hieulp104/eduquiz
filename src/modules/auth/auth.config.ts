@@ -21,6 +21,9 @@ export const authConfig = {
       const { pathname } = request.nextUrl;
       const isPublic =
         pathname === "/login" ||
+        // Trang giới thiệu công khai; "/" tự chuyển: chưa đăng nhập → giới thiệu, đã đăng nhập → tổng quan.
+        pathname === "/" ||
+        pathname === "/gioi-thieu" ||
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico";

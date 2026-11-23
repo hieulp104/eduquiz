@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { FileText, LoaderCircle, Plus, X } from "lucide-react";
 import {
   FILE_INPUT_ACCEPT,
@@ -27,6 +33,13 @@ export function AttachmentUploader({ files, setFiles, onBusyChange }: Props) {
   const [uploading, setUploading] = useState<Uploading[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Báo form còn file đang tải. Gọi trong effect — gọi trong hàm cập nhật state sẽ là
+  // "cập nhật component khác trong lúc render" (React báo lỗi).
+  const busy = uploading.length > 0;
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
+
   async function handlePick(list: FileList | null) {
     if (!list?.length) return;
     setError(null);
@@ -38,15 +51,20 @@ export function AttachmentUploader({ files, setFiles, onBusyChange }: Props) {
     }
 
     const queue = picked.filter((f) => {
-      if (f.size > MAX_FILE_SIZE) return setError(`"${f.name}" vượt quá 20MB.`), false;
-      if (!isAllowedMime(f.type)) return setError(`"${f.name}" không đúng định dạng cho phép.`), false;
+      if (f.size > MAX_FILE_SIZE)
+        return (setError(`"${f.name}" vượt quá 20MB.`), false);
+      if (!isAllowedMime(f.type))
+        return (setError(`"${f.name}" không đúng định dạng cho phép.`), false);
       return true;
     });
     if (queue.length === 0) return;
 
-    const pending = queue.map((f) => ({ key: crypto.randomUUID(), name: f.name, file: f }));
+    const pending = queue.map((f) => ({
+      key: crypto.randomUUID(),
+      name: f.name,
+      file: f,
+    }));
     setUploading((u) => [...u, ...pending]);
-    onBusyChange?.(true);
 
     await Promise.all(
       pending.map(async (p) => {
@@ -60,11 +78,7 @@ export function AttachmentUploader({ files, setFiles, onBusyChange }: Props) {
         } catch (e) {
           setError(`"${p.name}": ${(e as Error).message}`);
         } finally {
-          setUploading((u) => {
-            const next = u.filter((x) => x.key !== p.key);
-            if (next.length === 0) onBusyChange?.(false);
-            return next;
-          });
+          setUploading((u) => u.filter((x) => x.key !== p.key));
         }
       }),
     );
@@ -96,13 +110,18 @@ export function AttachmentUploader({ files, setFiles, onBusyChange }: Props) {
           e.target.value = ""; // cho phép chọn lại đúng file vừa bỏ
         }}
       />
-      <p className="text-xs text-ink-soft">Chụp ảnh bài tập hoặc chọn file ảnh, pdf, word, excel, audio và video</p>
+      <p className="text-xs text-ink-soft">
+        Chụp ảnh bài tập hoặc chọn file ảnh, pdf, word, excel, audio và video
+      </p>
       {error && <p className="text-xs text-danger-600">{error}</p>}
 
       {(files.length > 0 || uploading.length > 0) && (
         <ul className="grid gap-2 sm:grid-cols-2">
           {files.map((f) => (
-            <li key={f.id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
+            <li
+              key={f.id}
+              className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2"
+            >
               <FileText className="size-4 shrink-0 text-brand-700 dark:text-brand-300" />
               <a
                 href={`/api/files/${f.id}`}
@@ -112,7 +131,9 @@ export function AttachmentUploader({ files, setFiles, onBusyChange }: Props) {
               >
                 {f.name}
               </a>
-              <span className="shrink-0 text-xs text-ink-faint">{formatFileSize(f.size)}</span>
+              <span className="shrink-0 text-xs text-ink-faint">
+                {formatFileSize(f.size)}
+              </span>
               <button
                 type="button"
                 onClick={() => remove(f)}
@@ -124,9 +145,14 @@ export function AttachmentUploader({ files, setFiles, onBusyChange }: Props) {
             </li>
           ))}
           {uploading.map((u) => (
-            <li key={u.key} className="flex items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2">
+            <li
+              key={u.key}
+              className="flex items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2"
+            >
               <LoaderCircle className="size-4 shrink-0 animate-spin text-brand-600" />
-              <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{u.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
+                {u.name}
+              </span>
               <span className="text-xs text-ink-faint">Đang tải…</span>
             </li>
           ))}

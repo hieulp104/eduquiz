@@ -1,19 +1,33 @@
 import { prisma } from "@/shared/prisma/prisma.service";
-import type { BankBook, BankTreeNode, WorksheetQuestion } from "@/modules/worksheet/worksheet.types";
+import type {
+  BankBook,
+  BankTreeNode,
+  WorksheetQuestion,
+} from "@/modules/worksheet/worksheet.types";
 
-/** Sách trong ngân hàng (nút gốc), lọc theo lớp nếu có. */
+/** Sách trong ngân hàng chung (nút gốc) của mọi môn, lọc theo lớp nếu có. */
 export async function listBooks(grade?: number): Promise<BankBook[]> {
   const rows = await prisma.questionBankNode.findMany({
-    where: { parentId: null, subject: "Toán", ...(grade ? { grade } : {}) },
+    where: { parentId: null, ...(grade ? { grade } : {}) },
     orderBy: [{ grade: "asc" }, { order: "asc" }],
-    select: { id: true, grade: true, title: true },
+    select: { id: true, grade: true, subject: true, title: true },
   });
-  return rows.map((r) => ({ id: r.id, grade: r.grade ?? 0, title: r.title }));
+  return rows.map((r) => ({
+    id: r.id,
+    grade: r.grade ?? 0,
+    subject: r.subject ?? "",
+    title: r.title,
+  }));
 }
 
 /** Lấy toàn bộ nút thuộc 1 sách (cây nhỏ, vài trăm nút) — duyệt trong bộ nhớ. */
 async function loadBookNodes(bookId: string) {
-  const all: { id: string; parentId: string | null; title: string; order: number }[] = [];
+  const all: {
+    id: string;
+    parentId: string | null;
+    title: string;
+    order: number;
+  }[] = [];
   let frontier = [bookId];
   while (frontier.length > 0) {
     const rows = await prisma.questionBankNode.findMany({
@@ -42,7 +56,8 @@ export async function getBookTree(bookId: string): Promise<BankTreeNode[]> {
       .sort((a, b) => a.order - b.order)
       .map((n) => {
         const children = build(n.id);
-        const count = (countBy.get(n.id) ?? 0) + children.reduce((s, c) => s + c.count, 0);
+        const count =
+          (countBy.get(n.id) ?? 0) + children.reduce((s, c) => s + c.count, 0);
         return { id: n.id, title: n.title, count, children };
       });
   return build(bookId);
@@ -87,7 +102,10 @@ export async function pickRandomQuestion(
   nodeId: string,
   excludeIds: string[],
 ): Promise<WorksheetQuestion | null> {
-  const where = { nodeId: { in: await subtreeIds(nodeId) }, id: { notIn: excludeIds } };
+  const where = {
+    nodeId: { in: await subtreeIds(nodeId) },
+    id: { notIn: excludeIds },
+  };
   const total = await prisma.bankQuestion.count({ where });
   if (total === 0) return null;
   const [q] = await prisma.bankQuestion.findMany({
@@ -95,15 +113,29 @@ export async function pickRandomQuestion(
     orderBy: { id: "asc" },
     skip: Math.floor(Math.random() * total),
     take: 1,
-    select: { id: true, nodeId: true, type: true, content: true, options: true, correctIndex: true },
+    select: {
+      id: true,
+      nodeId: true,
+      type: true,
+      content: true,
+      options: true,
+      correctIndex: true,
+    },
   });
   return q ?? null;
 }
 
 /** Bốc ngẫu nhiên tối đa `count` câu khác nhau trong nhánh (cho ma trận đề). */
-export async function pickRandomQuestions(nodeId: string, count: number, excludeIds: string[] = []): Promise<string[]> {
+export async function pickRandomQuestions(
+  nodeId: string,
+  count: number,
+  excludeIds: string[] = [],
+): Promise<string[]> {
   const rows = await prisma.bankQuestion.findMany({
-    where: { nodeId: { in: await subtreeIds(nodeId) }, id: { notIn: excludeIds } },
+    where: {
+      nodeId: { in: await subtreeIds(nodeId) },
+      id: { notIn: excludeIds },
+    },
     select: { id: true },
   });
   const ids = rows.map((r) => r.id);
@@ -115,24 +147,37 @@ export async function pickRandomQuestions(nodeId: string, count: number, exclude
 }
 
 /** Nút có thuộc sách `bookId` không (đi ngược lên gốc). */
-export async function nodeBelongsToBook(nodeId: string, bookId: string): Promise<boolean> {
+export async function nodeBelongsToBook(
+  nodeId: string,
+  bookId: string,
+): Promise<boolean> {
   let current: string | null = nodeId;
   for (let depth = 0; current && depth < 10; depth++) {
     if (current === bookId) return true;
-    const row: { parentId: string | null } | null = await prisma.questionBankNode.findUnique({
-      where: { id: current },
-      select: { parentId: true },
-    });
+    const row: { parentId: string | null } | null =
+      await prisma.questionBankNode.findUnique({
+        where: { id: current },
+        select: { parentId: true },
+      });
     current = row?.parentId ?? null;
   }
   return false;
 }
 
 /** Lấy lại câu hỏi từ DB theo đúng thứ tự trên phiếu — không tin nội dung client gửi lên. */
-export async function getQuestionsInOrder(ids: string[]): Promise<WorksheetQuestion[]> {
+export async function getQuestionsInOrder(
+  ids: string[],
+): Promise<WorksheetQuestion[]> {
   const rows = await prisma.bankQuestion.findMany({
     where: { id: { in: ids } },
-    select: { id: true, nodeId: true, type: true, content: true, options: true, correctIndex: true },
+    select: {
+      id: true,
+      nodeId: true,
+      type: true,
+      content: true,
+      options: true,
+      correctIndex: true,
+    },
   });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));

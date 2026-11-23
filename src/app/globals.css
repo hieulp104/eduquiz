@@ -168,3 +168,26 @@ body {
   border-top-right-radius: 20px;
   box-shadow: 8px -8px 0 8px var(--canvas);
 }
+
+/*
+ * Trang giới thiệu: font tiêu đề (Be Vietnam Pro nạp ở trang, biến --font-heading) + hiệu ứng tô ô phiếu.
+ * `inline` để var() được thay ở chính phần tử dùng class, không phải ở :root (nơi chưa có biến font).
+ */
+@theme inline {
+  --font-display: var(--font-heading), var(--font-app), ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes bubble-in {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+.animate-bubble-in {
+  animation: bubble-in 200ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-bubble-in {
+    animation: none;
+  }
+}

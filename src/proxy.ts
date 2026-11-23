@@ -11,5 +11,5 @@ export default NextAuth(authConfig).auth;
 
 export const config = {
   // api/files tự kiểm tra đăng nhập — để ngoài proxy vì proxy chỉ đệm 10MB body (file tới 20MB).
-  matcher: ["/((?!api/auth|api/health|api/files|_next/static|_next/image|favicon.ico|.*\\.png$).*)"],
+  matcher: ["/((?!api/auth|api/health|api/files|_next/static|_next/image|favicon.ico|icon.svg|.*\\.png$).*)"],
 };
