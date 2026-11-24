@@ -1,0 +1,84 @@
+# ════════════════════════════════════════════════════════════════════
+# EduQuiz — PRODUCTION (VPS demo, truy cập bằng http://<IP>:3005).
+# Chạy:  docker compose -f docker-compose.prod.yml up -d --build
+#        (service `migrate` chạy migration + nạp dữ liệu mẫu trước khi bật app)
+#
+# Khác docker-compose.yml (dev):
+#  · Có service `app` (Next) mở cổng 3005 ra ngoài. Sau này có domain thì đổi
+#    thành "127.0.0.1:3005:3000" và cho nginx proxy vào như các web khác.
+#  · Postgres KHÔNG mở cổng nào — chỉ app/migrate nói chuyện qua mạng nội bộ.
+#  · File tải lên nằm ở volume `storage_data`, không mất khi build lại.
+#  · Biến nhạy cảm đọc từ .env (xem .env.example mục "CHỈ PRODUCTION").
+# ════════════════════════════════════════════════════════════════════
+name: eduquiz
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eduquiz-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://eduquiz:${POSTGRES_PASSWORD}@postgres:5432/eduquiz?schema=public
+      STORAGE_DIR: /app/storage
+      TZ: Asia/Ho_Chi_Minh
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    volumes:
+      - storage_data:/app/storage
+    ports:
+      - "3005:3000"
+    logging: *logging
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: eduquiz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eduquiz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Chua dat POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: eduquiz
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eduquiz -d eduquiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  # Chạy MỖI lần `up`: migration + nạp dữ liệu mẫu, xong thì thoát; `app` chỉ
+  # bật sau khi service này thành công. Seed idempotent (upsert theo email / mã).
+  # Build từ stage `builder` vì ở đó mới có Prisma CLI + tsx + source.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    restart: "no"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://eduquiz:${POSTGRES_PASSWORD}@postgres:5432/eduquiz?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm run db:seed"
+    logging: *logging
+
+volumes:
+  postgres_data:
+  storage_data:
