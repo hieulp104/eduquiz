@@ -73,6 +73,9 @@ export default async function ExamDetailPage({
   const config = exam.onlineConfig;
   const published = Boolean(config?.publishedAt);
   const settingsHref = `/de-thi/${exam.id}/lam-bai-online`;
+  // Link làm bài không cần đăng nhập CHỈ khi đã xuất bản cho "Tất cả mọi người" (khách nhập họ tên
+  // → tài khoản ẩn danh). Link /lam-bai/<id> kiểu cũ và đề giao theo lớp / học sinh đều bắt đăng nhập.
+  const openToGuests = published && config?.audience === "ALL";
   /** Tên đối tượng của 1 bài giao: tên lớp, hoặc đối tượng của "link chung". */
   const audienceName = (a: { classroom: { name: string } | null }) =>
     a.classroom?.name ?? (config && config.audience !== "CLASSES" ? AUDIENCE_LABEL[config.audience] : OPEN_AUDIENCE_NAME);
@@ -190,6 +193,13 @@ export default async function ExamDetailPage({
             />
             {!published && exam.assignments.length > 1 && <span className="text-xs text-ink-soft">({audienceName(latest!)})</span>}
           </div>
+          {(published || latest) && (
+            <LinkAccessNote
+              openToGuests={openToGuests}
+              published={published}
+              settingsHref={canEdit ? settingsHref : null}
+            />
+          )}
           <ul className="mt-4 space-y-2.5 text-sm text-ink-soft">
             {info.map((i) => (
               <li key={i.text} className="flex items-start gap-2">
@@ -336,7 +346,7 @@ export default async function ExamDetailPage({
             )}
 
             {allRows.length === 0 ? (
-              <EmptyResults href={settingsHref} assigned={assigned} canAssign={canAssign} />
+              <EmptyResults href={settingsHref} assigned={assigned} canAssign={canAssign} openToGuests={openToGuests} />
             ) : rows.length === 0 ? (
               <p className="py-16 text-center text-sm text-ink-soft">Không có học sinh nào khớp tìm kiếm.</p>
             ) : (
@@ -370,13 +380,68 @@ function initials(name: string) {
   return (first + last).toUpperCase();
 }
 
-function EmptyResults({ href, assigned, canAssign }: { href: string; assigned: boolean; canAssign: boolean }) {
+/**
+ * Dòng nhắc dưới nút Copy link: link này học sinh có phải đăng nhập không, và muốn bỏ đăng nhập
+ * thì làm gì. Trước đây không nói gì nên giáo viên gửi link /lam-bai/<id> rồi thấy học sinh bị bắt
+ * đăng nhập mà không hiểu vì sao.
+ */
+function LinkAccessNote({
+  openToGuests,
+  published,
+  settingsHref,
+}: {
+  openToGuests: boolean;
+  published: boolean;
+  settingsHref: string | null;
+}) {
+  if (openToGuests) {
+    return (
+      <p className="mt-2 flex items-start gap-1.5 text-xs text-success-700 dark:text-success-200">
+        <Globe className="mt-px size-3.5 shrink-0" aria-hidden />
+        Ai có link cũng làm được — chỉ cần nhập họ tên, không cần tài khoản.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-md border border-line bg-surface px-3 py-2 text-xs leading-relaxed text-ink-soft">
+      <p>
+        <span className="font-medium text-ink">Học sinh phải đăng nhập</span> mới mở được link này
+        {published ? " vì đề đang giao theo lớp / học sinh." : " vì đề chưa xuất bản làm bài online."}
+      </p>
+      <p className="mt-1">
+        Muốn ai có link cũng làm được (không cần tài khoản): xuất bản với đối tượng “Tất cả mọi người”.
+      </p>
+      {settingsHref && (
+        <Link
+          href={settingsHref}
+          className="mt-1.5 inline-block font-medium text-brand-700 hover:underline dark:text-brand-300"
+        >
+          Mở cài đặt làm bài online
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function EmptyResults({
+  href,
+  assigned,
+  canAssign,
+  openToGuests,
+}: {
+  href: string;
+  assigned: boolean;
+  canAssign: boolean;
+  openToGuests: boolean;
+}) {
   return (
     <div className="flex flex-col items-center px-4 py-24 text-center">
       <p className="text-lg font-medium text-ink">Chưa có dữ liệu nộp bài</p>
       <p className="mt-2 text-sm text-ink-soft">
         {assigned
-          ? "Đề đã giao — bấm “Copy link” để gửi link làm bài cho học sinh."
+          ? openToGuests
+            ? "Đề đã xuất bản — bấm “Copy link” để gửi link, ai có link cũng làm được."
+            : "Đề đã giao — bấm “Copy link” để gửi link; học sinh cần đăng nhập để làm bài."
           : "Vào “Cài đặt làm bài online” rồi Xuất bản để học sinh bắt đầu làm bài."}
       </p>
       {canAssign && (
