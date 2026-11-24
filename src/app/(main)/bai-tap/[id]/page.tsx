@@ -7,14 +7,21 @@ import { Badge } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { formatFileSize } from "@/modules/files/files.constants";
 import { getHomework } from "@/modules/homework/homework.service";
+import { can } from "@/common/permissions/permissions";
+import { HomeworkActions } from "@/modules/homework/components/homework-actions";
 
 export const metadata: Metadata = { title: "Chi tiết bài tập" };
 
-export default async function HomeworkDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function HomeworkDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const user = await requirePagePermission("homework.view");
   const hw = await getHomework(user, id);
   if (!hw) notFound();
+  const canEdit = can(user, "homework.update", { ownerId: hw.teacherId });
 
   const timeText =
     hw.startAt || hw.dueAt
@@ -24,20 +31,32 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
   return (
     <div className="mx-auto w-full max-w-[1000px] space-y-4">
       <div className="rounded-lg bg-surface p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase text-ink-soft">
-          Khối {hw.grade} · {hw.subject} · {HOMEWORK_PURPOSE_LABEL[hw.purpose]}
-        </p>
-        <h1 className="mt-1 text-xl font-bold text-ink">{hw.title}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-ink-soft">
+              Khối {hw.grade} · {hw.subject} ·{" "}
+              {HOMEWORK_PURPOSE_LABEL[hw.purpose]}
+            </p>
+            <h1 className="mt-1 text-xl font-bold break-words text-ink">
+              {hw.title}
+            </h1>
+          </div>
+          {canEdit && <HomeworkActions homeworkId={hw.id} title={hw.title} />}
+        </div>
 
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink-soft">
           <span className="flex items-center gap-1.5">
             <CalendarClock className="size-4" /> {timeText}
           </span>
           <span className="flex items-center gap-1.5">
-            <Eye className="size-4" /> {hw.showResult ? "Cho xem kết quả" : "Không cho xem kết quả"}
+            <Eye className="size-4" />{" "}
+            {hw.showResult ? "Cho xem kết quả" : "Không cho xem kết quả"}
           </span>
           <span className="flex items-center gap-1.5">
-            <LogIn className="size-4" /> {hw.requireLogin ? "Phải đăng nhập để nộp" : "Không cần đăng nhập để nộp"}
+            <LogIn className="size-4" />{" "}
+            {hw.requireLogin
+              ? "Phải đăng nhập để nộp"
+              : "Không cần đăng nhập để nộp"}
           </span>
         </div>
 
@@ -53,10 +72,15 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
 
       {hw.files.length > 0 && (
         <div className="rounded-lg bg-surface p-5 shadow-sm">
-          <h2 className="mb-3 font-medium text-ink">File bài tập ({hw.files.length})</h2>
+          <h2 className="mb-3 font-medium text-ink">
+            File bài tập ({hw.files.length})
+          </h2>
           <ul className="grid gap-2 sm:grid-cols-2">
             {hw.files.map((f) => (
-              <li key={f.id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
+              <li
+                key={f.id}
+                className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2"
+              >
                 <FileText className="size-4 shrink-0 text-brand-700 dark:text-brand-300" />
                 <a
                   href={`/api/files/${f.id}`}
@@ -66,7 +90,9 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
                 >
                   {f.originalName}
                 </a>
-                <span className="shrink-0 text-xs text-ink-faint">{formatFileSize(f.size)}</span>
+                <span className="shrink-0 text-xs text-ink-faint">
+                  {formatFileSize(f.size)}
+                </span>
                 <a
                   href={`/api/files/${f.id}?download`}
                   aria-label={`Tải ${f.originalName}`}
@@ -84,7 +110,10 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
         <div className="rounded-lg bg-surface p-5 shadow-sm">
           <h2 className="mb-2 font-medium text-ink">Nội dung</h2>
           {/* contentHtml đã lọc bằng sanitize-html lúc lưu (homework.sanitize.ts). */}
-          <div className="rich-content text-ink" dangerouslySetInnerHTML={{ __html: hw.contentHtml }} />
+          <div
+            className="rich-content text-ink"
+            dangerouslySetInnerHTML={{ __html: hw.contentHtml }}
+          />
         </div>
       )}
     </div>

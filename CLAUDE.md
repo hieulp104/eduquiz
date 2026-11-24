@@ -13,7 +13,7 @@ có hạn nộp; học sinh vào lớp bằng mã, làm bài có đếm giờ, h
 |---|---|---|
 | Framework | **Next.js 16** (App Router) | `middleware.ts` đã bị bỏ → dùng **`proxy.ts`**; `params`/`searchParams` là Promise |
 | ORM | **Prisma 7** | Bắt buộc driver adapter `@prisma/adapter-pg` |
-| Database | PostgreSQL 15 (Docker) | Host port **5434** |
+| Database | PostgreSQL 15 (Docker) | Host port **5437** |
 | UI | Tailwind CSS 4 (cấu hình trong `globals.css`, không có `tailwind.config`) | |
 | Auth | Auth.js v5 — Credentials, JWT | |
 | Validation | Zod 4 | |
@@ -265,6 +265,8 @@ Trả kết quả bằng `ok()` / `fail()` (`common/filters/error.ts`), hoặc s
 ### Phiếu bài tập & ngân hàng câu hỏi (`modules/worksheet`, `prisma/question-bank`)
 
 - Cây kiến thức `QuestionBankNode`: sách (gốc) → chủ đề → bài → dạng (lá). Câu hỏi `BankQuestion` gắn ở lá.
+- Trang phiếu `/bai-tap/phieu` (cũ `/phieu-toan` tự chuyển) dùng cho MỌI môn: chọn Môn → Lớp → Sách theo
+  `QuestionBankNode.subject` / `grade` của nút gốc; mặc định theo hồ sơ môn/khối dạy. Môn chưa có sách → dẫn sang `/ngan-hang`.
 - Mọi câu (kể cả "điền chỗ trống") đều lưu `options + correctIndex` → đổi được sang đề trắc nghiệm online.
 - Nội dung mẫu Toán 1 – KNTT do `prisma/question-bank/toan1-kntt.ts` **tự sinh** (RNG seed cố định), chạy
   trong `db:seed`. Thêm sách mới: viết file tương tự rồi gọi trong `seed-question-bank.ts`.

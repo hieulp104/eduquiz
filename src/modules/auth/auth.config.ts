@@ -23,6 +23,9 @@ export const authConfig = {
         pathname === "/login" ||
         // Link làm bài của đề đã xuất bản — khách chưa đăng nhập vẫn mở được (trang tự kiểm tra đối tượng).
         pathname.startsWith("/thi/") ||
+        // Trang giới thiệu công khai; "/" tự chuyển: chưa đăng nhập → giới thiệu, đã đăng nhập → tổng quan.
+        pathname === "/" ||
+        pathname === "/gioi-thieu" ||
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico";

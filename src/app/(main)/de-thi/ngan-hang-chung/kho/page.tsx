@@ -14,7 +14,7 @@ type Book = Awaited<ReturnType<typeof listSharedBooks>>[number];
 function BookCard({ book }: { book: Book }) {
   return (
     <Link
-      href={`/bai-tap/phieu-toan?sach=${book.id}`}
+      href={`/bai-tap/phieu?sach=${book.id}`}
       className="group flex items-center gap-4 rounded-lg bg-surface p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
     >
       <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-bank-500/10 text-bank-600">

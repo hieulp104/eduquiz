@@ -7,10 +7,17 @@ export async function getTeachingProfile(userId: string) {
     where: { id: userId },
     select: { teachingGrades: true, teachingSubjects: true },
   });
-  return { grades: row?.teachingGrades ?? [], subjects: row?.teachingSubjects ?? [] };
+  return {
+    grades: row?.teachingGrades ?? [],
+    subjects: row?.teachingSubjects ?? [],
+  };
 }
 
-export async function saveTeachingProfile(userId: string, grades: number[], subjects: string[]) {
+export async function saveTeachingProfile(
+  userId: string,
+  grades: number[],
+  subjects: string[],
+) {
   await prisma.user.update({
     where: { id: userId },
     data: { teachingGrades: grades, teachingSubjects: subjects },
@@ -18,20 +25,25 @@ export async function saveTeachingProfile(userId: string, grades: number[], subj
 }
 
 /** Sách trong ngân hàng chung, kèm số câu và cờ "khớp khối/môn giáo viên dạy". */
-export async function listSharedBooks(profile: { grades: number[]; subjects: string[] }) {
+export async function listSharedBooks(profile: {
+  grades: number[];
+  subjects: string[];
+}) {
   const books = await listBooks();
   const withCounts = await Promise.all(
     books.map(async (b) => {
       const tree = await getBookTree(b.id);
-      const subject = "Toán"; // listBooks hiện chỉ lấy sách Toán
       return {
         ...b,
-        subject,
         topicCount: tree.length,
         questionCount: tree.reduce((s, n) => s + n.count, 0),
-        matches: profile.grades.includes(b.grade) && profile.subjects.includes(subject),
+        matches:
+          profile.grades.includes(b.grade) &&
+          profile.subjects.includes(b.subject),
       };
     }),
   );
-  return withCounts.sort((a, b) => Number(b.matches) - Number(a.matches) || a.grade - b.grade);
+  return withCounts.sort(
+    (a, b) => Number(b.matches) - Number(a.matches) || a.grade - b.grade,
+  );
 }

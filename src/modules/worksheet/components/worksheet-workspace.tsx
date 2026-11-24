@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Alert } from "@/components/ui";
+import { GRADES, SUBJECTS } from "@/common/enums";
 import {
   createExamFromWorksheetAction,
   loadBookTreeAction,
@@ -41,19 +42,25 @@ import { BankTree } from "./bank-tree";
 import { WorksheetSettingsDialog } from "./worksheet-settings-dialog";
 
 const LETTERS = "ABCDEFGH";
-const GRADES = [1, 2, 3, 4, 5];
 const DRAFT_KEY = "eduquiz:worksheet-draft";
 
 type Props = {
   books: BankBook[];
   initialBookId: string | null;
+  initialSubject: string;
   initialTree: BankTreeNode[];
   feedbackHref: string;
 };
 
-type Draft = { bookId: string | null; title: string; questions: WorksheetQuestion[]; settings: WorksheetSettings };
+type Draft = {
+  bookId: string | null;
+  title: string;
+  questions: WorksheetQuestion[];
+  settings: WorksheetSettings;
+};
 
-const defaultTitle = (grade: number) => `Phiếu bài tập Toán lớp ${grade}`;
+const defaultTitle = (subject: string, grade: number) =>
+  `Phiếu bài tập ${subject} lớp ${grade}`;
 
 const SELECT =
   "h-[38px] w-full appearance-none rounded-md border border-line bg-surface bg-[length:10px] bg-[right_12px_center] bg-no-repeat px-3 pr-8 text-[15px] text-ink focus:border-brand-500 focus:outline-none";
@@ -86,37 +93,65 @@ function ToolbarButton({
       disabled={disabled || busy}
       className={cn(
         "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed",
-        tone === "outline" && "border border-brand-700 bg-surface text-brand-800 hover:bg-brand-50 dark:border-brand-300 dark:text-brand-200",
-        tone === "muted" && "bg-muted text-ink-soft enabled:hover:bg-line disabled:opacity-55",
-        tone === "primary" && "bg-brand-700 text-white enabled:hover:bg-brand-800 disabled:bg-brand-300 dark:disabled:bg-brand-900",
-        tone === "plain" && "border border-line bg-surface text-ink hover:bg-muted",
+        tone === "outline" &&
+          "border border-brand-700 bg-surface text-brand-800 hover:bg-brand-50 dark:border-brand-300 dark:text-brand-200",
+        tone === "muted" &&
+          "bg-muted text-ink-soft enabled:hover:bg-line disabled:opacity-55",
+        tone === "primary" &&
+          "bg-brand-700 text-white enabled:hover:bg-brand-800 disabled:bg-brand-300 dark:disabled:bg-brand-900",
+        tone === "plain" &&
+          "border border-line bg-surface text-ink hover:bg-muted",
       )}
     >
-      {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}
+      {busy ? (
+        <LoaderCircle className="size-3.5 animate-spin" />
+      ) : (
+        <Icon className="size-3.5" />
+      )}
       {children}
     </button>
   );
 }
 
-export function WorksheetWorkspace({ books, initialBookId, initialTree, feedbackHref }: Props) {
+export function WorksheetWorkspace({
+  books,
+  initialBookId,
+  initialSubject,
+  initialTree,
+  feedbackHref,
+}: Props) {
   const router = useRouter();
   const initialGrade = books.find((b) => b.id === initialBookId)?.grade ?? 1;
 
+  const [subject, setSubject] = useState(initialSubject);
   const [grade, setGrade] = useState(initialGrade);
   const [bookId, setBookId] = useState(initialBookId);
   const [tree, setTree] = useState(initialTree);
-  const [title, setTitle] = useState(defaultTitle(initialGrade));
+  const [title, setTitle] = useState(
+    defaultTitle(initialSubject, initialGrade),
+  );
   const [questions, setQuestions] = useState<WorksheetQuestion[]>([]);
   const [settings, setSettings] = useState(DEFAULT_WORKSHEET_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [pickingId, setPickingId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ tone: "info" | "danger"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    tone: "info" | "danger";
+    text: string;
+  } | null>(null);
   const [busy, setBusy] = useState<"docx" | "exam" | null>(null);
   const [treeLoading, startTreeLoad] = useTransition();
   const [restored, setRestored] = useState(false);
 
-  const gradeBooks = useMemo(() => books.filter((b) => b.grade === grade), [books, grade]);
+  const gradeBooks = useMemo(
+    () => books.filter((b) => b.subject === subject && b.grade === grade),
+    [books, subject, grade],
+  );
+  /** Môn có sách trong ngân hàng chung — đánh dấu trong ô chọn môn. */
+  const subjectsWithBooks = useMemo(
+    () => new Set(books.map((b) => b.subject)),
+    [books],
+  );
   const hasQuestions = questions.length > 0;
 
   // Khôi phục phiếu đang soạn dở (lỡ tải lại trang) — chỉ khi cùng sách.
@@ -140,7 +175,10 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
   useEffect(() => {
     if (!restored) return;
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ bookId, title, questions, settings } satisfies Draft));
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ bookId, title, questions, settings } satisfies Draft),
+      );
     } catch {
       /* bỏ qua */
     }
@@ -157,35 +195,68 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
     });
   }
 
-  function changeGrade(next: number) {
-    setGrade(next);
-    // Tên phiếu còn mặc định thì đổi theo lớp; đã tự đặt tên thì giữ nguyên.
-    if (title === defaultTitle(grade)) setTitle(defaultTitle(next));
-    changeBook(books.find((b) => b.grade === next)?.id ?? null);
+  /** Đổi môn / lớp → chọn sách đầu tiên khớp; tên phiếu còn mặc định thì đổi theo. */
+  function changeScope(nextSubject: string, nextGrade: number) {
+    // Đổi môn mà môn đó có sách → nhảy tới lớp có sách gần nhất cho tiện.
+    if (
+      nextSubject !== subject &&
+      !books.some((b) => b.subject === nextSubject && b.grade === nextGrade)
+    ) {
+      const g = books.find((b) => b.subject === nextSubject)?.grade;
+      if (g) nextGrade = g;
+    }
+    if (title === defaultTitle(subject, grade))
+      setTitle(defaultTitle(nextSubject, nextGrade));
+    setSubject(nextSubject);
+    setGrade(nextGrade);
+    changeBook(
+      books.find((b) => b.subject === nextSubject && b.grade === nextGrade)
+        ?.id ?? null,
+    );
   }
 
   async function pick(node: BankTreeNode, replaceIndex?: number) {
-    if (replaceIndex === undefined && questions.length >= MAX_WORKSHEET_QUESTIONS) {
-      setNotice({ tone: "danger", text: `Phiếu tối đa ${MAX_WORKSHEET_QUESTIONS} câu.` });
+    if (
+      replaceIndex === undefined &&
+      questions.length >= MAX_WORKSHEET_QUESTIONS
+    ) {
+      setNotice({
+        tone: "danger",
+        text: `Phiếu tối đa ${MAX_WORKSHEET_QUESTIONS} câu.`,
+      });
       return;
     }
     setPickingId(node.id);
     setNotice(null);
-    const res = await pickQuestionAction({ nodeId: node.id, excludeIds: questions.map((q) => q.id) });
+    const res = await pickQuestionAction({
+      nodeId: node.id,
+      excludeIds: questions.map((q) => q.id),
+    });
     setPickingId(null);
     if (!res.ok) {
       setNotice({ tone: "danger", text: res.message });
       return;
     }
     setQuestions((prev) =>
-      replaceIndex === undefined ? [...prev, res.data] : prev.map((q, i) => (i === replaceIndex ? res.data : q)),
+      replaceIndex === undefined
+        ? [...prev, res.data]
+        : prev.map((q, i) => (i === replaceIndex ? res.data : q)),
     );
-    if (replaceIndex === undefined) setNotice({ tone: "info", text: `Đã thêm câu ${questions.length + 1} từ “${node.title}”.` });
+    if (replaceIndex === undefined)
+      setNotice({
+        tone: "info",
+        text: `Đã thêm câu ${questions.length + 1} từ “${node.title}”.`,
+      });
   }
 
   /** Đổi câu khác: bốc câu mới trong đúng dạng (nút lá) của câu cũ. */
   async function swap(index: number) {
-    const leaf: BankTreeNode = { id: questions[index].nodeId, title: "", count: 1, children: [] };
+    const leaf: BankTreeNode = {
+      id: questions[index].nodeId,
+      title: "",
+      count: 1,
+      children: [],
+    };
     await pick(leaf, index);
   }
 
@@ -200,15 +271,22 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
   async function downloadDocx() {
     setBusy("docx");
     try {
-      const blob = await exportWorksheetDocx(title || defaultTitle(grade), questions, settings);
+      const blob = await exportWorksheetDocx(
+        title || defaultTitle(subject, grade),
+        questions,
+        settings,
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = docxFileName(title || defaultTitle(grade));
+      a.download = docxFileName(title || defaultTitle(subject, grade));
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      setNotice({ tone: "danger", text: "Xuất file docx thất bại, vui lòng thử lại." });
+      setNotice({
+        tone: "danger",
+        text: "Xuất file docx thất bại, vui lòng thử lại.",
+      });
     } finally {
       setBusy(null);
     }
@@ -217,7 +295,7 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
   async function toExam() {
     setBusy("exam");
     const res = await createExamFromWorksheetAction({
-      title: title || defaultTitle(grade),
+      title: title || defaultTitle(subject, grade),
       questionIds: questions.map((q) => q.id),
       durationMinutes: settings.examMinutes,
     });
@@ -230,7 +308,12 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
     try {
       sessionStorage.setItem(
         HOMEWORK_DRAFT_KEY,
-        JSON.stringify({ title: title || defaultTitle(grade), contentHtml: worksheetToHtml(questions), grade }),
+        JSON.stringify({
+          title: title || defaultTitle(subject, grade),
+          contentHtml: worksheetToHtml(questions),
+          grade,
+          subject,
+        }),
       );
     } catch {
       /* bỏ qua — form vẫn mở, chỉ không điền sẵn */
@@ -241,7 +324,9 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
   return (
     <div className="flex flex-col rounded-lg bg-surface p-4 shadow-sm md:p-5 lg:h-[calc(100vh-130px)] lg:min-h-[560px]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[15px] font-semibold uppercase text-ink">Tạo phiếu bài tập Toán</h1>
+        <h1 className="text-[15px] font-semibold uppercase text-ink">
+          Tạo phiếu bài tập
+        </h1>
         <div className="flex flex-wrap gap-2">
           <Link
             href={feedbackHref}
@@ -249,16 +334,35 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
           >
             <Lightbulb className="size-3.5" /> Góp ý/đề xuất tính năng
           </Link>
-          <ToolbarButton icon={FilePlus2} disabled={!hasQuestions} onClick={toHomework}>
+          <ToolbarButton
+            icon={FilePlus2}
+            disabled={!hasQuestions}
+            onClick={toHomework}
+          >
             Tạo bài tập online từ phiếu
           </ToolbarButton>
-          <ToolbarButton icon={FileQuestion} disabled={!hasQuestions} busy={busy === "exam"} onClick={toExam}>
+          <ToolbarButton
+            icon={FileQuestion}
+            disabled={!hasQuestions}
+            busy={busy === "exam"}
+            onClick={toExam}
+          >
             Tạo đề thi online từ phiếu
           </ToolbarButton>
-          <ToolbarButton icon={Download} tone="primary" disabled={!hasQuestions} busy={busy === "docx"} onClick={downloadDocx}>
+          <ToolbarButton
+            icon={Download}
+            tone="primary"
+            disabled={!hasQuestions}
+            busy={busy === "docx"}
+            onClick={downloadDocx}
+          >
             Xuất docx phiếu bài tập
           </ToolbarButton>
-          <ToolbarButton icon={Settings} tone="plain" onClick={() => setSettingsOpen(true)}>
+          <ToolbarButton
+            icon={Settings}
+            tone="plain"
+            onClick={() => setSettingsOpen(true)}
+          >
             Cài đặt
           </ToolbarButton>
         </div>
@@ -273,13 +377,35 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,565px)_minmax(0,1fr)]">
         {/* ── Trái: chọn lớp / sách + cây câu hỏi ── */}
         <div className="flex min-h-0 flex-col gap-2">
-          <select aria-label="Lớp" value={grade} onChange={(e) => changeGrade(Number(e.target.value))} className={SELECT} style={CARET}>
-            {GRADES.map((g) => (
-              <option key={g} value={g}>
-                Lớp {g}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              aria-label="Môn"
+              value={subject}
+              onChange={(e) => changeScope(e.target.value, grade)}
+              className={SELECT}
+              style={CARET}
+            >
+              {SUBJECTS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                  {subjectsWithBooks.has(s) ? "" : " (chưa có sách)"}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Lớp"
+              value={grade}
+              onChange={(e) => changeScope(subject, Number(e.target.value))}
+              className={SELECT}
+              style={CARET}
+            >
+              {GRADES.map((g) => (
+                <option key={g} value={g}>
+                  Lớp {g}
+                </option>
+              ))}
+            </select>
+          </div>
           <select
             aria-label="Sách"
             value={bookId ?? ""}
@@ -288,7 +414,9 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
             style={CARET}
             disabled={gradeBooks.length === 0}
           >
-            {gradeBooks.length === 0 && <option value="">Chưa có sách cho lớp này</option>}
+            {gradeBooks.length === 0 && (
+              <option value="">Chưa có sách cho lớp này</option>
+            )}
             {gradeBooks.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.title}
@@ -299,19 +427,42 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
           <div className="flex min-h-[320px] flex-1 flex-col overflow-hidden rounded-md border border-line">
             <div className="border-b border-line px-3 py-2.5">
               <p className="text-[15px] font-medium text-ink">Cây câu hỏi</p>
-              <p className="text-xs text-ink-soft">Bấm vào các đơn vị kiến thức bên dưới để thêm ngẫu nhiên 1 câu hỏi</p>
+              <p className="text-xs text-ink-soft">
+                Bấm vào các đơn vị kiến thức bên dưới để thêm ngẫu nhiên 1 câu
+                hỏi
+              </p>
             </div>
             <div className="flex-1 overflow-y-auto py-2 pr-1">
               {treeLoading ? (
                 <p className="flex items-center gap-2 px-4 py-6 text-sm text-ink-soft">
-                  <LoaderCircle className="size-4 animate-spin" /> Đang tải cây câu hỏi…
+                  <LoaderCircle className="size-4 animate-spin" /> Đang tải cây
+                  câu hỏi…
                 </p>
               ) : tree.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-ink-soft">
-                  Ngân hàng chưa có câu hỏi cho lớp này. Hiện mới có Toán 1 – Kết nối tri thức.
-                </p>
+                <div className="px-4 py-6 text-sm text-ink-soft">
+                  <p>
+                    Ngân hàng chung chưa có sách {subject} lớp {grade}.
+                    {books.length > 0 && (
+                      <> Hiện có: {books.map((b) => b.title).join(", ")}.</>
+                    )}
+                  </p>
+                  <p className="mt-2">
+                    Bạn có thể tự nhập câu hỏi {subject} từ file Word / Excel
+                    vào ngân hàng riêng rồi tạo đề từ đó.
+                  </p>
+                  <Link
+                    href="/ngan-hang"
+                    className="mt-3 inline-flex h-8 items-center rounded-md bg-brand-700 px-3 text-xs font-medium text-white hover:bg-brand-800"
+                  >
+                    Mở ngân hàng câu hỏi riêng
+                  </Link>
+                </div>
               ) : (
-                <BankTree nodes={tree} onPick={(n) => void pick(n)} pendingId={pickingId} />
+                <BankTree
+                  nodes={tree}
+                  onPick={(n) => void pick(n)}
+                  pendingId={pickingId}
+                />
               )}
             </div>
           </div>
@@ -320,7 +471,10 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
         {/* ── Phải: tên phiếu + danh sách câu ── */}
         <div className="flex min-h-[320px] flex-col overflow-hidden rounded-md border border-line">
           <div className="border-b border-line px-3 py-3">
-            <label htmlFor="ws-title" className="mb-2 block text-[15px] font-medium text-ink">
+            <label
+              htmlFor="ws-title"
+              className="mb-2 block text-[15px] font-medium text-ink"
+            >
               Tên phiếu bài tập
             </label>
             <input
@@ -335,8 +489,13 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
           <div className="flex-1 overflow-y-auto">
             {!hasQuestions ? (
               <div className="flex flex-col items-center px-4 pt-6 pb-10 text-center">
-                <Inbox className="size-20 text-brand-600 dark:text-brand-300" strokeWidth={1.25} />
-                <p className="mt-2 text-[15px] text-ink-soft">Chưa có câu hỏi</p>
+                <Inbox
+                  className="size-20 text-brand-600 dark:text-brand-300"
+                  strokeWidth={1.25}
+                />
+                <p className="mt-2 text-[15px] text-ink-soft">
+                  Chưa có câu hỏi
+                </p>
               </div>
             ) : (
               <ol className="divide-y divide-line">
@@ -344,7 +503,8 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
                   <li key={q.id} className="group px-4 py-3">
                     <div className="flex items-start gap-3">
                       <p className="flex-1 text-[15px] text-ink">
-                        <span className="font-semibold">Câu {i + 1}:</span> {q.content}
+                        <span className="font-semibold">Câu {i + 1}:</span>{" "}
+                        {q.content}
                         {q.type === "FILL" && (
                           <span className="ml-2 rounded bg-success-50 px-1.5 py-0.5 text-xs font-medium text-success-700">
                             Đáp án: {q.options[q.correctIndex]}
@@ -352,13 +512,32 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
                         )}
                       </p>
                       <div className="flex shrink-0 gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
-                        <IconAction label="Lên" disabled={i === 0} onClick={() => move(i, -1)} icon={ArrowUp} />
-                        <IconAction label="Xuống" disabled={i === questions.length - 1} onClick={() => move(i, 1)} icon={ArrowDown} />
-                        <IconAction label="Đổi câu khác" disabled={pickingId !== null} onClick={() => void swap(i)} icon={RefreshCw} />
+                        <IconAction
+                          label="Lên"
+                          disabled={i === 0}
+                          onClick={() => move(i, -1)}
+                          icon={ArrowUp}
+                        />
+                        <IconAction
+                          label="Xuống"
+                          disabled={i === questions.length - 1}
+                          onClick={() => move(i, 1)}
+                          icon={ArrowDown}
+                        />
+                        <IconAction
+                          label="Đổi câu khác"
+                          disabled={pickingId !== null}
+                          onClick={() => void swap(i)}
+                          icon={RefreshCw}
+                        />
                         <IconAction
                           label="Xóa câu"
                           danger
-                          onClick={() => setQuestions((prev) => prev.filter((_, j) => j !== i))}
+                          onClick={() =>
+                            setQuestions((prev) =>
+                              prev.filter((_, j) => j !== i),
+                            )
+                          }
                           icon={Trash2}
                         />
                       </div>
@@ -370,7 +549,9 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
                             key={oi}
                             className={cn(
                               "text-sm",
-                              oi === q.correctIndex ? "font-semibold text-success-700" : "text-ink",
+                              oi === q.correctIndex
+                                ? "font-semibold text-success-700"
+                                : "text-ink",
                             )}
                           >
                             {LETTERS[oi]}. {o}
@@ -386,10 +567,15 @@ export function WorksheetWorkspace({ books, initialBookId, initialTree, feedback
 
           {hasQuestions && (
             <div className="flex items-center justify-between border-t border-line px-4 py-2 text-xs text-ink-soft">
-              <span>{questions.length} câu · đáp án đúng tô xanh (chỉ hiện trên màn hình giáo viên)</span>
+              <span>
+                {questions.length} câu · đáp án đúng tô xanh (chỉ hiện trên màn
+                hình giáo viên)
+              </span>
               <button
                 type="button"
-                onClick={() => confirm("Xóa hết câu hỏi trên phiếu?") && setQuestions([])}
+                onClick={() =>
+                  confirm("Xóa hết câu hỏi trên phiếu?") && setQuestions([])
+                }
                 className="font-medium text-danger-600 hover:underline"
               >
                 Xóa tất cả
