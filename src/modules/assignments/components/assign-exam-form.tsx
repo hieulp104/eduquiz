@@ -101,7 +101,7 @@ export function AssignExamForm({
         </label>
         {state.error && <Alert variant="danger">{state.error}</Alert>}
         {state.success && <Alert variant="success">{state.success}</Alert>}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" variant="decisive" disabled={pending}>
           <Send className="size-4" /> Giao bài
         </Button>
       </form>

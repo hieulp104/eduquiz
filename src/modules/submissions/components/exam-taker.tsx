@@ -182,7 +182,7 @@ export function ExamTaker({
         >
           <Timer className="size-5" /> {formatRemaining(remaining)}
         </p>
-        <Button size="sm" className="shrink-0" disabled={pending} onClick={confirmSubmit}>
+        <Button size="sm" variant="decisive" className="shrink-0" disabled={pending} onClick={confirmSubmit}>
           <SquarePen className="size-4" />
           {pending ? "Đang nộp..." : "Nộp bài"}
         </Button>

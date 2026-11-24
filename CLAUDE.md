@@ -295,3 +295,9 @@ Trả kết quả bằng `ok()` / `fail()` (`common/filters/error.ts`), hoặc s
   Bảng màu ở `src/app/globals.css`.
 - Chế độ tối: `<html data-theme="light|dark">` do `ThemeToggle` đặt, lưu localStorage; chưa chọn thì
   theo hệ điều hành. Màu nền/chữ/viền tự đổi qua biến CSS; màu riêng cho chế độ tối dùng tiền tố `dark:`.
+- Hiệu ứng trang trí (`components/effects`, lấy từ bộ threeui): `ConstellationBackground` (chòm sao Canvas 2D — trang đăng nhập),
+  `DotMatrixBackground` (lưới chấm li ti WebGL — `/thi`; chấm KHÔNG to / co giãn, dễ gây "sợ lỗ"); màu theo token
+  `--color-brand-*`, cha cần `relative isolate`; và class `cta-sparkle` + `<SparklePoints />` (chấm sáng trong nút chính,
+  CSS ở `globals.css`). Nút quyết định = `<Button variant="decisive">` (viên thuốc đen → tím, từ `lumen-cta`; token
+  `--color-lumen-*`) — CHỈ cho hành động chốt: Bắt đầu thi, Nộp bài, Xuất bản, Giao bài, Tạo / Lưu đề; không rải cho nút thường. Hiệu ứng nền CHỈ dùng ở trang "mặt tiền" (giới thiệu — chỉ nút, đăng nhập — cả nút Đăng nhập, `/thi/[mã]`) — tối đa 1 nền +
+  1 nút / trang; KHÔNG đưa vào dashboard, trình soạn đề, trang làm bài. Cả hai tự tắt khi `prefers-reduced-motion`.

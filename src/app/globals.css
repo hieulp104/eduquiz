@@ -18,6 +18,15 @@
   --color-brand-800: #1e40af;
 
   --color-brand-900: #1e3a8a;
+  /* Ánh xanh lơ ở đáy nút chính (cta-sparkle). */
+  --color-glow-400: #22d3ee;
+  /* Nút quyết định (variant "decisive", từ `lumen-cta` của threeui): dải đen → tím. */
+  --color-lumen-950: #050014;
+  --color-lumen-900: #0d0029;
+  --color-lumen-800: #1e0066;
+  --color-lumen-700: #2f00ab;
+  --color-lumen-600: #5227c0;
+  --color-lumen-400: #9470d9;
 
   /* Sidebar + banner chào mừng */
   --color-sidebar: #1f3fae;
@@ -189,5 +198,346 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-bubble-in {
     animation: none;
+  }
+}
+
+/*
+ * Nút chính có chấm sáng (từ `floating-dots-cta` của threeui): ánh xanh nhạt dưới đáy + chấm trắng bay lên.
+ * Dùng: class `cta-sparkle` cho nút nền brand + <SparklePoints /> (components/effects). Chỉ cho 1 nút / trang.
+ */
+.cta-sparkle {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  font-weight: 500;
+  background-color: var(--color-brand-600);
+  background-image: radial-gradient(65% 65% at 50% 100%, --theme(--color-glow-400 / 80%) 0%, transparent 100%);
+  transition: transform 150ms ease, filter 200ms ease;
+}
+/* Viền kính sáng mảnh phía trên (như bản gốc). */
+.cta-sparkle::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: calc(0.75rem - 1px);
+  background: linear-gradient(178deg, rgb(255 255 255 / 0.19) 0%, transparent 100%);
+  pointer-events: none;
+}
+.cta-sparkle:hover:not(:disabled) {
+  background-color: var(--color-brand-600);
+  filter: brightness(1.08);
+}
+.cta-sparkle:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.cta-sparkle > :not(.cta-sparkle-points) {
+  position: relative;
+  z-index: 2;
+}
+.cta-sparkle svg {
+  transition: transform 300ms ease;
+}
+.cta-sparkle:hover:not(:disabled) svg {
+  transform: translateX(2px);
+}
+/* Mũi tên tự vẽ lại nét khi rê chuột — chỉ cho icon có class `cta-sparkle-arrow`. */
+.cta-sparkle:hover:not(:disabled) .cta-sparkle-arrow path {
+  animation: cta-dash 0.8s linear forwards;
+}
+@keyframes cta-dash {
+  0% { stroke-dasharray: 0, 20; stroke-dashoffset: 0; }
+  50% { stroke-dasharray: 10, 10; stroke-dashoffset: -5; }
+  100% { stroke-dasharray: 20, 0; stroke-dashoffset: -10; }
+}
+.cta-sparkle-points {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cta-sparkle-points i {
+  position: absolute;
+  bottom: -6px;
+  width: 2px;
+  height: 2px;
+  border-radius: 9999px;
+  background: #fff;
+  animation: cta-float 2.2s ease-in-out infinite;
+}
+.cta-sparkle-points i:nth-child(1) { left: 10%; opacity: 1; animation-duration: 2.35s; animation-delay: 0.2s; }
+.cta-sparkle-points i:nth-child(2) { left: 30%; opacity: 0.7; animation-duration: 2.5s; animation-delay: 0.5s; }
+.cta-sparkle-points i:nth-child(3) { left: 25%; opacity: 0.8; animation-duration: 2.2s; animation-delay: 0.1s; }
+.cta-sparkle-points i:nth-child(4) { left: 44%; opacity: 0.6; animation-duration: 2.05s; }
+.cta-sparkle-points i:nth-child(5) { left: 50%; opacity: 1; animation-duration: 1.9s; }
+.cta-sparkle-points i:nth-child(6) { left: 75%; opacity: 0.5; animation-duration: 1.5s; animation-delay: 1.5s; }
+.cta-sparkle-points i:nth-child(7) { left: 88%; opacity: 0.9; animation-duration: 2.2s; animation-delay: 0.2s; }
+.cta-sparkle-points i:nth-child(8) { left: 58%; opacity: 0.8; animation-duration: 2.25s; animation-delay: 0.2s; }
+.cta-sparkle-points i:nth-child(9) { left: 96%; opacity: 0.6; animation-duration: 2.6s; animation-delay: 0.1s; }
+.cta-sparkle-points i:nth-child(10) { left: 65%; opacity: 1; animation-duration: 2.5s; animation-delay: 0.2s; }
+.cta-sparkle:disabled .cta-sparkle-points {
+  display: none;
+}
+@keyframes cta-float {
+  0% { transform: translateY(0); }
+  85% { opacity: 0; }
+  100% { transform: translateY(-55px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cta-sparkle-points {
+    display: none;
+  }
+  .cta-sparkle:hover .cta-sparkle-arrow path {
+    animation: none;
+  }
+}
+
+/*
+ * Nút quyết định — Button variant="decisive" (từ `lumen-cta` của threeui): viên thuốc dải đen → tím,
+ * viền sáng mảnh, bóng tím, vòng tròn nhỏ sau chữ. CHỈ cho hành động chốt: Nộp bài, Xuất bản, Giao bài, Tạo / Lưu đề.
+ */
+.btn-decisive {
+  position: relative;
+  border-radius: 9999px;
+  padding-inline: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(
+    90deg,
+    var(--color-lumen-950) 0%,
+    var(--color-lumen-900) 20%,
+    var(--color-lumen-800) 40%,
+    var(--color-lumen-700) 60%,
+    var(--color-lumen-600) 75%,
+    var(--color-lumen-400) 100%
+  );
+  box-shadow:
+    0 4px 22px color-mix(in srgb, var(--color-lumen-700) 30%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  transition: filter 250ms ease, transform 150ms ease;
+}
+.btn-decisive::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 9999px;
+  border: 1.3px solid rgb(255 255 255 / 0.9);
+}
+.btn-decisive:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.btn-decisive:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn-decisive.h-8 {
+  padding-inline: 1rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-decisive {
+    transition: none;
+  }
+}
+
+/*
+ * Trang giới thiệu — chuyển động mềm (chỉ CSS). Không thay bố cục / chữ / màu.
+ * .intro-rise: trồi lên khi mở trang · .intro-reveal: hiện dần khi cuộn tới (scroll-driven, trình duyệt
+ * chưa hỗ trợ thì hiện luôn) · tắt hết khi prefers-reduced-motion.
+ */
+.intro-accent {
+  background: linear-gradient(100deg, var(--color-brand-600), var(--color-glow-400));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+:root[data-theme="dark"] .intro-accent {
+  background-image: linear-gradient(100deg, var(--color-brand-300), var(--color-glow-400));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .intro-accent {
+    background-image: linear-gradient(100deg, var(--color-brand-300), var(--color-glow-400));
+  }
+}
+.intro-glow {
+  position: absolute;
+  inset: 8% -6% -4% 4%;
+  z-index: -1;
+  border-radius: 9999px;
+  background:
+    radial-gradient(closest-side at 35% 40%, color-mix(in srgb, var(--color-brand-500) 22%, transparent), transparent),
+    radial-gradient(closest-side at 70% 65%, color-mix(in srgb, var(--color-glow-400) 16%, transparent), transparent);
+  filter: blur(40px);
+  pointer-events: none;
+}
+.intro-step-num {
+  transition: background-color 250ms ease, color 250ms ease, transform 250ms ease;
+}
+.intro-step:hover .intro-step-num {
+  background-color: var(--color-brand-600);
+  border-color: var(--color-brand-600);
+  color: #fff;
+  transform: scale(1.06);
+}
+.intro-dot {
+  transition: transform 250ms ease;
+}
+.intro-subject:hover .intro-dot {
+  transform: scale(1.35);
+}
+.intro-subject:hover dt {
+  color: var(--color-brand-600);
+}
+:root[data-theme="dark"] .intro-subject:hover dt {
+  color: var(--color-brand-300);
+}
+.intro-band::before {
+  content: "";
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 60%;
+  height: 180%;
+  z-index: -1;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-brand-500) 28%, transparent), transparent);
+  pointer-events: none;
+}
+
+@keyframes intro-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+@keyframes intro-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes intro-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes intro-drift {
+  50% {
+    transform: translate(3%, -4%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root:has(.intro-page) {
+    scroll-behavior: smooth;
+  }
+  .intro-rise {
+    animation: intro-rise 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .intro-swap {
+    animation: intro-fade 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .intro-glow {
+    animation: intro-drift 18s ease-in-out infinite;
+  }
+  @supports (animation-timeline: view()) {
+    .intro-reveal {
+      animation: intro-rise linear both;
+      animation-timeline: view();
+      animation-range: entry calc(var(--i, 0) * 6%) entry calc(70% + var(--i, 0) * 6%);
+    }
+    .intro-line {
+      transform-origin: left;
+      animation: intro-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 30% cover 40%;
+    }
+  }
+}
+
+/*
+ * Trang giới thiệu — "đường sáng": đường phân cách mờ 2 đầu, thỉnh thoảng có vệt sáng lướt qua;
+ * đường nối các bước có chấm sáng chạy 1 → 2 → 3 → 4 (luồng soạn → giao → làm → chấm).
+ */
+.intro-divider {
+  position: relative;
+}
+.intro-divider-top::before,
+.intro-divider-bottom::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  height: 3px;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side, var(--color-glow-400), color-mix(in srgb, var(--color-brand-500) 60%, transparent) 45%, transparent)
+      -40% 50% / 22% 100% no-repeat,
+    linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent) center / 100% 1px no-repeat;
+}
+.intro-divider-top::before {
+  top: -1px;
+}
+.intro-divider-bottom::after {
+  bottom: -2px;
+}
+.intro-line {
+  position: relative;
+}
+.intro-line::after {
+  content: "";
+  position: absolute;
+  inset: -3px 0;
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(closest-side, var(--color-brand-500), color-mix(in srgb, var(--color-glow-400) 50%, transparent) 55%, transparent)
+    -5% 50% / 10px 100% no-repeat;
+}
+@keyframes intro-sweep {
+  0% {
+    background-position: -40% 50%, center;
+  }
+  45%,
+  100% {
+    background-position: 140% 50%, center;
+  }
+}
+@keyframes intro-travel {
+  0% {
+    opacity: 0;
+    background-position: -5% 50%;
+  }
+  4% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 1;
+    background-position: 105% 50%;
+  }
+  26%,
+  100% {
+    opacity: 0;
+    background-position: 105% 50%;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .intro-divider-top::before,
+  .intro-divider-bottom::after {
+    animation: intro-sweep 9s ease-in-out infinite;
+  }
+  header.intro-divider-bottom::after {
+    animation-delay: 1.5s;
+  }
+  .intro-divider-top::before {
+    animation-delay: 4s;
+  }
+  section.intro-divider-bottom::after {
+    animation-delay: 6.5s;
+  }
+  /* Chấm chạy lần lượt qua 3 đoạn nối trong 1 chu kỳ 6s, mỗi đoạn ~1.3s. */
+  .intro-line::after {
+    animation: intro-travel 6s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 1.4s + 1s);
   }
 }

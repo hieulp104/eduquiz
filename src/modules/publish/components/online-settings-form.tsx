@@ -807,7 +807,7 @@ export function OnlineSettingsForm({
           )}
           Lưu nháp
         </Button>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" variant="decisive" disabled={pending}>
           {pending && action === "publish" && (
             <LoaderCircle className="size-4 animate-spin" />
           )}

@@ -143,35 +143,39 @@ export function SubjectDemo() {
         {/* Câu hỏi */}
         <div
           aria-live="polite"
-          className="flex-1 rounded-2xl border border-line bg-surface p-5 shadow-sm"
+          className="flex-1 rounded-2xl border border-line bg-surface p-5 shadow-sm transition-shadow duration-300 hover:shadow-md"
         >
-          <p className="text-sm text-ink-faint">Câu 1</p>
-          <p className="mt-1 min-h-[3rem] font-medium text-ink">{s.question}</p>
-          <ul className="mt-4 space-y-2">
-            {s.options.map((o, i) => {
-              const right = i === s.answer;
-              return (
-                <li
-                  key={o}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg border px-3 py-2 text-sm",
-                    right
-                      ? "border-success-600 bg-success-600/10 font-medium text-success-600"
-                      : "border-line text-ink",
-                  )}
-                >
-                  <span className="font-semibold">{LETTERS[i]}.</span>
-                  {o}
-                  {right && (
-                    <>
-                      <Check className="ml-auto size-4" aria-hidden />
-                      <span className="sr-only">(đáp án đúng)</span>
-                    </>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <div key={s.name} className="intro-swap">
+            <p className="text-sm text-ink-faint">Câu 1</p>
+            <p className="mt-1 min-h-[3rem] font-medium text-ink">
+              {s.question}
+            </p>
+            <ul className="mt-4 space-y-2">
+              {s.options.map((o, i) => {
+                const right = i === s.answer;
+                return (
+                  <li
+                    key={o}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg border px-3 py-2 text-sm",
+                      right
+                        ? "border-success-600 bg-success-600/10 font-medium text-success-600"
+                        : "border-line text-ink",
+                    )}
+                  >
+                    <span className="font-semibold">{LETTERS[i]}.</span>
+                    {o}
+                    {right && (
+                      <>
+                        <Check className="ml-auto size-4" aria-hidden />
+                        <span className="sr-only">(đáp án đúng)</span>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
 
         {/* Phiếu tô — chấm lại mỗi lần đổi môn */}

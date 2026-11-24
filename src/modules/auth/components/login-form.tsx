@@ -1,8 +1,9 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { Alert, Button, Input } from "@/components/ui";
+import { SparklePoints } from "@/components/effects";
 import { loginAction, type LoginState } from "@/modules/auth/auth.actions";
 
 const initialState: LoginState = { error: null };
@@ -66,9 +67,13 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
         )}
       </div>
 
-      <Button type="submit" className="h-11 w-full" disabled={pending}>
-        {pending && <LoaderCircle className="size-4 animate-spin" />}
-        Đăng nhập
+      <Button type="submit" className="cta-sparkle h-12 w-full text-base" disabled={pending}>
+        <SparklePoints />
+        <span className="inline-flex items-center gap-1.5">
+          {pending && <LoaderCircle className="size-4 animate-spin" />}
+          Đăng nhập
+          {!pending && <ArrowRight className="cta-sparkle-arrow size-[18px]" strokeWidth={1.75} />}
+        </span>
       </Button>
     </form>
   );

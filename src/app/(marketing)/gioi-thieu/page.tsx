@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Be_Vietnam_Pro } from "next/font/google";
 import { BrandLogo, ThemeToggle, APP_NAME } from "@/components/theme";
 import { auth } from "@/modules/auth/auth.service";
+import { SparklePoints } from "@/components/effects";
 import { SubjectDemo } from "./subject-demo";
 
 export const metadata: Metadata = {
@@ -78,8 +79,10 @@ export default async function IntroPage() {
   const label = loggedIn ? "Vào trang tổng quan" : "Đăng nhập";
 
   return (
-    <div className={`${display.variable} min-h-screen overflow-x-hidden`}>
-      <header className="border-b border-line">
+    <div
+      className={`${display.variable} intro-page min-h-screen overflow-x-hidden`}
+    >
+      <header className="intro-divider intro-divider-bottom">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <BrandLogo />
           <div className="flex items-center gap-2">
@@ -98,19 +101,27 @@ export default async function IntroPage() {
         {/* ── Mở đầu: chọn môn, xem câu hỏi + phiếu tô được chấm ── */}
         <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-14 pb-20 sm:px-6 lg:grid-cols-[1fr_1.05fr] lg:gap-16 lg:pt-20">
           <div>
-            <h1 className="font-display text-4xl leading-[1.12] font-bold text-balance text-ink sm:text-5xl">
-              Ra đề, giao bài và chấm điểm trắc nghiệm cho mọi môn học.
+            <h1 className="intro-rise font-display text-4xl leading-[1.12] font-bold text-balance text-ink sm:text-5xl">
+              Ra đề, giao bài và chấm điểm trắc nghiệm cho{" "}
+              <span className="intro-accent">mọi môn học.</span>
             </h1>
-            <p className="mt-5 max-w-lg text-lg leading-relaxed text-pretty text-ink-soft">
+            <p
+              className="intro-rise mt-5 max-w-lg text-lg leading-relaxed text-pretty text-ink-soft"
+              style={{ animationDelay: "120ms" }}
+            >
               Dán đề từ Word, giao cho lớp bằng một đường link. Học sinh nộp bài
               là có điểm, giáo viên thấy ngay câu nào cả lớp còn yếu.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-6">
+            <div
+              className="intro-rise mt-8 flex flex-wrap items-center gap-6"
+              style={{ animationDelay: "240ms" }}
+            >
               <Link
                 href={href}
-                className="rounded-lg bg-brand-600 px-6 py-3 font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                className="cta-sparkle rounded-lg bg-brand-600 px-6 py-3 font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
               >
-                {loggedIn ? label : "Bắt đầu soạn đề"}
+                <SparklePoints />
+                <span>{loggedIn ? label : "Bắt đầu soạn đề"}</span>
               </Link>
               <a
                 href="#quy-trinh"
@@ -121,13 +132,19 @@ export default async function IntroPage() {
             </div>
           </div>
 
-          <SubjectDemo />
+          <div
+            className="intro-rise relative isolate"
+            style={{ animationDelay: "320ms" }}
+          >
+            <span aria-hidden className="intro-glow" />
+            <SubjectDemo />
+          </div>
         </section>
 
         {/* ── Quy trình 4 bước ── */}
         <section
           id="quy-trinh"
-          className="scroll-mt-6 border-y border-line bg-surface"
+          className="intro-divider intro-divider-top intro-divider-bottom scroll-mt-6 bg-surface"
         >
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
             <h2 className="font-display max-w-xl text-3xl font-bold text-balance text-ink">
@@ -135,15 +152,19 @@ export default async function IntroPage() {
             </h2>
             <ol className="mt-12 grid gap-10 md:grid-cols-4 md:gap-6">
               {STEPS.map((s, i) => (
-                <li key={s.title} className="relative md:pr-4">
+                <li
+                  key={s.title}
+                  className="intro-reveal intro-step relative md:pr-4"
+                  style={{ "--i": i } as React.CSSProperties}
+                >
                   <div className="flex items-center gap-3">
-                    <span className="font-display flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-brand-600 text-sm font-bold text-brand-600 dark:border-brand-300 dark:text-brand-300">
+                    <span className="intro-step-num font-display flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-brand-600 text-sm font-bold text-brand-600 dark:border-brand-300 dark:text-brand-300">
                       {i + 1}
                     </span>
                     {i < STEPS.length - 1 && (
                       <span
                         aria-hidden
-                        className="hidden h-px flex-1 bg-line md:block"
+                        className="intro-line hidden h-px flex-1 bg-gradient-to-r from-brand-300 to-line md:block dark:from-brand-800"
                       />
                     )}
                   </div>
@@ -175,9 +196,9 @@ export default async function IntroPage() {
               {SUBJECTS.map((s) => (
                 <div
                   key={s.name}
-                  className="grid gap-2 py-6 sm:grid-cols-[12rem_1fr] sm:gap-6"
+                  className="intro-reveal intro-subject grid gap-2 py-6 sm:grid-cols-[12rem_1fr] sm:gap-6"
                 >
-                  <dt className="font-display font-semibold text-ink">
+                  <dt className="font-display font-semibold text-ink transition-colors">
                     {s.name}
                   </dt>
                   <dd>
@@ -186,7 +207,7 @@ export default async function IntroPage() {
                         <li key={p} className="flex gap-2.5 text-ink-soft">
                           <span
                             aria-hidden
-                            className="mt-[0.45rem] size-2 shrink-0 rounded-full bg-brand-600 dark:bg-brand-300"
+                            className="intro-dot mt-[0.45rem] size-2 shrink-0 rounded-full bg-brand-600 dark:bg-brand-300"
                           />
                           {p}
                         </li>
@@ -200,8 +221,8 @@ export default async function IntroPage() {
         </section>
 
         {/* ── Kết ── */}
-        <section className="bg-navy-950">
-          <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-4 py-14 sm:flex-row sm:items-center sm:px-6">
+        <section className="intro-band relative isolate overflow-hidden bg-navy-950">
+          <div className="intro-reveal mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-4 py-14 sm:flex-row sm:items-center sm:px-6">
             <div>
               <h2 className="font-display text-2xl font-bold text-balance text-white sm:text-3xl">
                 Bắt đầu với đề kiểm tra tiếp theo của bạn
@@ -213,7 +234,7 @@ export default async function IntroPage() {
             </div>
             <Link
               href={href}
-              className="shrink-0 rounded-lg bg-white px-6 py-3 font-semibold text-navy-950 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              className="shrink-0 rounded-lg bg-white px-6 py-3 font-semibold text-navy-950 shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             >
               {label}
             </Link>

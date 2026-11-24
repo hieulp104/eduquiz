@@ -137,7 +137,7 @@ export function ExamSettingsForm({ initial, submitLabel, onCancel, onSubmit }: P
         <Button variant="ghost" onClick={onCancel} disabled={pending} className="text-brand-700 dark:text-brand-300">
           Hủy
         </Button>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" variant="decisive" disabled={pending}>
           {pending && <LoaderCircle className="size-4 animate-spin" />}
           {submitLabel}
         </Button>

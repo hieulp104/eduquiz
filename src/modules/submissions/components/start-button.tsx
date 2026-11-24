@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ChevronRight, CircleAlert } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import { Alert, Button, FormField, Input } from "@/components/ui";
 import { startGuestAction, startSubmissionAction } from "@/modules/submissions/submissions.actions";
 
@@ -57,9 +57,14 @@ export function StartButton({ assignmentId, guestCode, needPassword = false, ask
   return (
     <>
       {error && !open && <Alert variant="danger">{error}</Alert>}
-      <Button className="h-11 w-full text-[15px]" disabled={pending} onClick={() => (needDialog ? setOpen(true) : start())}>
+      <Button
+        variant="decisive"
+        className="h-11 w-full text-[15px]"
+        disabled={pending}
+        onClick={() => (needDialog ? setOpen(true) : start())}
+      >
+        {pending && !needDialog && <LoaderCircle className="size-4 animate-spin" />}
         {pending && !needDialog ? "Đang mở đề..." : label}
-        <ChevronRight className="size-4" />
       </Button>
 
       {needDialog && (

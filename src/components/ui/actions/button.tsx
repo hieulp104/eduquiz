@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "decisive";
 type Size = "sm" | "md";
 
 const BASE =
@@ -14,6 +14,8 @@ const VARIANT: Record<Variant, string> = {
   secondary: "border border-line bg-surface text-ink hover:bg-muted",
   ghost: "text-ink-soft hover:bg-muted hover:text-ink",
   danger: "bg-danger-600 text-white hover:bg-danger-700",
+  /** Hành động chốt (Nộp bài, Xuất bản, Giao bài, Tạo / Lưu đề) — CSS `.btn-decisive` ở globals.css. */
+  decisive: "btn-decisive",
 };
 
 const SIZE: Record<Size, string> = {
